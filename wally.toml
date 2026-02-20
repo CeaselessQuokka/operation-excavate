@@ -1,0 +1,14 @@
+[package]
+name = "ceaseless-gaming/operation-excavate"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[server-dependencies]
+ProfileStore = "lm-loleris/profilestore@1.0.3"
+
+[dependencies]
+Cmdr = "evaera/cmdr@1.12.0"
+Component = "sleitnick/component@2.4.8"
+Knit = "sleitnick/knit@1.7.0"
+Signal = "sleitnick/signal@2.0.3"

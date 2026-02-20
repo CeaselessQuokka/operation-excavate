@@ -1,0 +1,39 @@
+{
+	"[luau]": {
+		"editor.tabSize": 4,
+		"editor.defaultFormatter": "JohnnyMorganz.stylua"
+	},
+	"editor.useTabStops": true,
+	"editor.insertSpaces": false,
+	"editor.detectIndentation": false,
+	"editor.formatOnSave": true,
+	"files.insertFinalNewline": true,
+	"workbench.colorCustomizations": {
+		"editor.wordHighlightBackground": "#ffff00", // yellow with transparency
+		"editor.wordHighlightStrongBackground": "#ffff00" // also yellow for writes/references
+	},
+	"cSpell.words": [
+		"Adornee",
+		"Animatable",
+		"Blockcast",
+		"cframe",
+		"cooldown",
+		"Cooldowns",
+		"DHMS",
+		"Knockback",
+		"leaderstats",
+		"Lerp",
+		"noob",
+		"profilebegin",
+		"profileend",
+		"rbxasset",
+		"rbxassetid",
+		"Regen",
+		"Respawn",
+		"Teleporters",
+		"teleporting",
+		"Unanchor",
+		"Unequip",
+		"WDHMS"
+	],
+}

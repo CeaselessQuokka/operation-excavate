@@ -1,0 +1,8 @@
+/Packages
+/ServerPackages
+/DevPackages
+
+sourcemap.json
+CodebaseStyleAndConventionGuide.md
+
+/*.lock

@@ -1,0 +1,27 @@
+{
+	"Helper": {
+		"scope": "lua,luau",
+		"prefix": [
+			"helper"
+		],
+		"description": "Helper Template",
+		"body": [
+			"--!strict",
+			"--- Services ---",
+			"",
+			"--- Imports ---",
+			"",
+			"--- Types ---",
+			"",
+			"--- Variables ---",
+			"",
+			"--- Functions ---",
+			"",
+			"--- ${2:$TM_FILENAME_BASE} Helper ---",
+			"local ${1:$TM_FILENAME_BASE} = {}",
+			"",
+			"return table.freeze(${1:$TM_FILENAME_BASE})",
+			"",
+		]
+	},
+}

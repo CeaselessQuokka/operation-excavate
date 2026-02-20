@@ -1,0 +1,6 @@
+[tools]
+Rojo = "rojo-rbx/rojo@7.6.1"
+StyLua = "JohnnyMorganz/StyLua@2.3.1" # Lua(u) formatter
+Luau-Lsp = "JohnnyMorganz/luau-lsp@1.62.0" # Luau language server
+Wally = "UpliftGames/wally@0.3.2" # Roblox package/module manger (for packages like Trove, Janitor, ProfileStore, etc)
+Wally-Package-Types = "JohnnyMorganz/wally-package-types@1.6.2" # Providing types for Wally packages
