@@ -109,6 +109,70 @@ for _ = 1, ITERATIONS do
 	diag:StopTimer("FullPipeline (8³)")
 end
 
+-- GetChunkAtPosition --
+do
+	-- Populate some chunks for lookup testing.
+	local lookupGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+	for i = 0, 511 do
+		local pos = lookupGrid:ChunkIndexToGridPosition(i)
+		lookupGrid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
+	end
+	local queryWorldPos = lookupGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
+
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetChunkAtPos (8³, hit)")
+		lookupGrid:GetChunkAtPosition(queryWorldPos)
+		diag:StopTimer("GetChunkAtPos (8³, hit)")
+	end
+
+	local emptyGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetChunkAtPos (8³, miss)")
+		emptyGrid:GetChunkAtPosition(queryWorldPos)
+		diag:StopTimer("GetChunkAtPos (8³, miss)")
+	end
+
+	-- Offset query (small displacement within chunk bounds).
+	local offsetPos = queryWorldPos + Vector3.new(1, 1, 1)
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetChunkAtPos (8³, offset)")
+		lookupGrid:GetChunkAtPosition(offsetPos)
+		diag:StopTimer("GetChunkAtPos (8³, offset)")
+	end
+end
+
+do
+	-- GetChunkAtPosition with non-zero center.
+	local offsetGrid = Grid.new(Vector3.new(500, 500, 500), Vector3.new(64, 64, 64), 8)
+	for i = 0, 511 do
+		local pos = offsetGrid:ChunkIndexToGridPosition(i)
+		offsetGrid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
+	end
+	local offsetQueryPos = offsetGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
+
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetChunkAtPos (8³, center offset)")
+		offsetGrid:GetChunkAtPosition(offsetQueryPos)
+		diag:StopTimer("GetChunkAtPos (8³, center offset)")
+	end
+end
+
+do
+	-- GetChunkAtPosition on 64³ grid.
+	local bigLookupGrid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8)
+	for i = 0, 262143 do -- 64³ = 262144 chunks
+		local pos = bigLookupGrid:ChunkIndexToGridPosition(i)
+		bigLookupGrid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
+	end
+	local bigQueryPos = bigLookupGrid:GridPositionToWorldPosition(Vector3.new(32, 48, 17))
+
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetChunkAtPos (64³, hit)")
+		bigLookupGrid:GetChunkAtPosition(bigQueryPos)
+		diag:StopTimer("GetChunkAtPos (64³, hit)")
+	end
+end
+
 -- Bulk Operations --
 for _ = 1, BULK_ITERATIONS do
 	diag:StartTimer("RoundTrip 512 (8³)")
@@ -148,6 +212,25 @@ for _ = 1, BULK_ITERATIONS do
 		smallGrid:GridPositionToWorldPosition(pos)
 	end
 	diag:StopTimer("FullPipeline 512 (8³)")
+end
+
+do
+	-- Bulk GetChunkAtPosition.
+	local bulkLookupGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+	for i = 0, 511 do
+		local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
+		bulkLookupGrid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
+	end
+
+	for _ = 1, BULK_ITERATIONS do
+		diag:StartTimer("GetChunkAtPos 512 (8³)")
+		for i = 0, 511 do
+			local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
+			local worldPos = bulkLookupGrid:GridPositionToWorldPosition(pos)
+			bulkLookupGrid:GetChunkAtPosition(worldPos)
+		end
+		diag:StopTimer("GetChunkAtPos 512 (8³)")
+	end
 end
 
 -- Print detailed breakdown --

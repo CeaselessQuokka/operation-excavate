@@ -38,7 +38,11 @@ end
 -- TestFramework.RunSuite(require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.test"]))
 
 -- Run benchmark.
--- require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.bench"])
+require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.bench"])
 
 -- Generate planet infinigrid for testing.
 -- require(ReplicatedStorage.Shared.Common.Classes.Infinigrid).new(Vector3.zero, Vector3.new(4224, 4224, 4224), 64)
+
+-- local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
+-- local grid = Infinigrid.new(Vector3.zero, Vector3.new(4224, 4224, 4224), 64)
+-- print(grid:GetChunkAtPosition(Vector3.zero))

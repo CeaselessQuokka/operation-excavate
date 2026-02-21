@@ -11,12 +11,8 @@
 
 --!strict
 --- Services ---
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local DebugHelper = require(ReplicatedStorage.Shared.Helpers.DebugHelper)
-local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
 
 --- Types ---
 export type BaseChunkState = {
@@ -35,6 +31,10 @@ local function ExpandVectorToGrid(vector: Vector3, resolution: number): Vector3
 		math.ceil(vector.Y / resolution) * resolution,
 		math.ceil(vector.Z / resolution) * resolution
 	)
+end
+
+local function RoundVectorToGrid(vector: Vector3): Vector3
+	return Vector3.new(math.round(vector.X / 4) * 4, math.round(vector.Y / 4) * 4, math.round(vector.Z / 4) * 4)
 end
 
 --- Grid Class ---
@@ -75,8 +75,15 @@ function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSiz
 			`Chunk size {chunkSize} was expanded to {grid.ChunkSize} to align with terrain resolution (8x8x8). This may cause unexpected behavior if you were relying on the original chunk size.`
 		)
 	end
-	print(grid)
 	return grid
+end
+
+-- TODO: self evaluate all methods to ensure correctness in successes and failures (things that should fail do fail)
+-- TODO: test out funcName<<TypeHere>>(...) syntax
+function Grid.GetChunkAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): (BaseChunkState & ChunkState)?
+	local chunkWorldPosition = RoundVectorToGrid(position) - self.GenerationOrigin
+	local chunkGridPosition = chunkWorldPosition / self.ChunkSize
+	return self.Chunks[self:GridPositionToChunkIndex(chunkGridPosition)]
 end
 
 function Grid.GridPositionToWorldPosition(self: Grid<any>, gridPosition: Vector3): Vector3
