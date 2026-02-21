@@ -24,4 +24,44 @@
 			"",
 		]
 	},
+	"Class": {
+		"scope": "lua,luau",
+		"prefix": [
+			"class"
+		],
+		"description": "Generates a template class given the file name.",
+		"body": [
+			"--[[",
+			"\tSynopsis",
+			"--]]",
+			"",
+			"--!strict",
+			"--- Services ---",
+			"",
+			"--- Imports ---",
+			"",
+			"--- Types ---",
+			"",
+			"--- Variables ---",
+			"",
+			"--- Functions ---",
+			"",
+			"--- ${2:$TM_FILENAME_BASE} Class ---",
+			"local ${1:$TM_FILENAME_BASE} = {}",
+			"${1:$TM_FILENAME_BASE}.__index = ${1:$TM_FILENAME_BASE}",
+			"",
+			"export type ${1:$TM_FILENAME_BASE} = typeof(setmetatable({} :: {}, ${1:$TM_FILENAME_BASE}))",
+			"function ${1:$TM_FILENAME_BASE}.new(...: any): ${1:$TM_FILENAME_BASE}",
+			"\tlocal self: ${1:$TM_FILENAME_BASE} = setmetatable({}, ${1:$TM_FILENAME_BASE})",
+			"\treturn self",
+			"end",
+			"",
+			"function ${1:$TM_FILENAME_BASE}.Method(self: ${1:$TM_FILENAME_BASE}, ...: any)",
+			"\t${3}",
+			"end",
+			"",
+			"return table.freeze(${1:$TM_FILENAME_BASE})",
+			""
+		]
+	}
 }
