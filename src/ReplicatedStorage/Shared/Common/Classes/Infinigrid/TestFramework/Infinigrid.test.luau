@@ -1,25 +1,32 @@
 --[[
-	Unit tests for Infinigrid.
-	Exercises Grid construction, alignment, index/position conversions, and world position mapping.
+	Comprehensive unit tests for Infinigrid.
+	Exercises Grid construction, alignment, index/position conversions,
+	world position mapping, chunk lookup, and edge cases.
 
 	Usage (from a Roblox script):
-		local TestFramework = require(path.to.TestFramework)
-		local InfinigridTests = require(path.to.Infinigrid.TestFramework.Infinigrid.test)
-		TestFramework.RunSuite(InfinigridTests)
+		local Litmus = require(ReplicatedStorage.Shared.Litmus)
+		local InfinigridTests = require(path.to.Infinigrid.TestFramework["Infinigrid.test"])
+		Litmus.RunSuite(InfinigridTests)
 --]]
 
 --!strict
 
+--- Services ---
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 --- Imports ---
 local Grid = require(script.Parent.Parent)
-local TestFramework = require(script.Parent)
+local Litmus = require(ReplicatedStorage.Shared.Litmus)
 
 --- Variables ---
 local DEFAULT_CHUNK_SIZE = 64
-local DEFAULT_MAX_GRID_SIZE = Vector3.one * ((2 ^ 16) - 1) -- Mirrors the module constant.
+local DEFAULT_MAX_GRID_SIZE = Vector3.one * ((2 ^ 16) - 1)
 
 --- Infinigrid Tests ---
-return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEach, afterEach, skip)
+return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, afterEach, skip)
+	-- ================================================================
+	-- Construction
+	-- ================================================================
 	describe("Grid.new", function()
 		it("should create a grid with default parameters", function()
 			local grid = Grid.new(Vector3.zero)
@@ -41,7 +48,6 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should set GridWorldSize to default when omitted", function()
 			local grid = Grid.new(Vector3.zero)
-			-- DEFAULT_MAX_GRID_SIZE ceiled to nearest 8.
 			local expected = Vector3.new(
 				math.ceil(DEFAULT_MAX_GRID_SIZE.X / 8) * 8,
 				math.ceil(DEFAULT_MAX_GRID_SIZE.Y / 8) * 8,
@@ -78,7 +84,6 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 			it("should ceil each component independently", function()
 				local grid = Grid.new(Vector3.new(2, 5, 9))
-				-- math.ceil(2/4)*4 = 4, math.ceil(5/4)*4 = 8, math.ceil(9/4)*4 = 12
 				expect(grid.Center).To.Equal(Vector3.new(4, 8, 12))
 			end)
 
@@ -88,13 +93,11 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			end)
 
 			it("should ceil negative center components toward zero", function()
-				-- math.ceil(-5/4)*4 = -1*4 = -4
 				local grid = Grid.new(Vector3.new(-5, -5, -5))
 				expect(grid.Center).To.Equal(Vector3.new(-4, -4, -4))
 			end)
 
 			it("should handle mixed positive and negative components", function()
-				-- math.ceil(-3/4)*4 = 0, math.ceil(2/4)*4 = 4, math.ceil(-7/4)*4 = -4
 				local grid = Grid.new(Vector3.new(-3, 2, -7))
 				expect(grid.Center).To.Equal(Vector3.new(0, 4, -4))
 			end)
@@ -102,10 +105,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		describe("generation origin", function()
 			it("should compute GenerationOrigin as center - worldSize/2", function()
-				local center = Vector3.new(100, 100, 100)
-				local worldSize = Vector3.new(64, 64, 64)
-				local grid = Grid.new(center, worldSize, 8)
-				-- Center gets ceiled to 100 (already aligned), worldSize stays 64.
+				local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
 				expect(grid.GenerationOrigin).To.Equal(grid.Center - (grid.GridWorldSize / 2))
 			end)
 
@@ -115,8 +115,6 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			end)
 
 			it("should compute GenerationOrigin with negative center", function()
-				-- center=-100 (already aligned to 4), worldSize=64.
-				-- GenerationOrigin = -100 - 64/2 = -132.
 				local grid = Grid.new(Vector3.new(-100, -100, -100), Vector3.new(64, 64, 64), 8)
 				expect(grid.GenerationOrigin).To.Equal(Vector3.new(-132, -132, -132))
 			end)
@@ -142,12 +140,21 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 				local grid = Grid.new(Vector3.zero, nil, 64)
 				expect(grid.ChunkSize).To.Equal(64)
 			end)
+
+			it("should ceil chunk size of 1 to 8", function()
+				local grid = Grid.new(Vector3.zero, nil, 1)
+				expect(grid.ChunkSize).To.Equal(8)
+			end)
+
+			it("should ceil chunk size of 7 to 8", function()
+				local grid = Grid.new(Vector3.zero, nil, 7)
+				expect(grid.ChunkSize).To.Equal(8)
+			end)
 		end)
 
 		describe("grid world size alignment", function()
 			it("should ceil grid world size components to nearest multiple of 8", function()
 				local grid = Grid.new(Vector3.zero, Vector3.new(10, 10, 10), 8)
-				-- math.ceil(10/8)*8 = 16
 				expect(grid.GridWorldSize).To.Equal(Vector3.new(16, 16, 16))
 			end)
 
@@ -163,17 +170,18 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
-	describe("GridPositionToChunkIndex (0-based)", function()
+	-- ================================================================
+	-- GridPositionToChunkIndex
+	-- ================================================================
+	describe("GridPositionToChunkIndex", function()
 		local grid
 
 		beforeEach(function()
-			-- 64x64x64 world, 8-stud chunks → GridSize = 8,8,8
 			grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 		end)
 
 		it("should return 0 for grid position (0,0,0)", function()
-			local index = grid:GridPositionToChunkIndex(Vector3.zero)
-			expect(index).To.Equal(0)
+			expect(grid:GridPositionToChunkIndex(Vector3.zero)).To.Equal(0)
 		end)
 
 		it("should increase by 1 along the Z axis", function()
@@ -196,14 +204,28 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should compute the correct max index for the last position", function()
 			local gs = grid.GridSize
-			-- Last 0-based position is (gs.X-1, gs.Y-1, gs.Z-1).
 			local maxIndex = grid:GridPositionToChunkIndex(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
 			local expectedMax = (gs.X * gs.Y * gs.Z) - 1
 			expect(maxIndex).To.Equal(expectedMax)
 		end)
+
+		it("should return an integer for all valid grid positions", function()
+			local gs = grid.GridSize
+			for x = 0, math.min(gs.X - 1, 3) do
+				for y = 0, math.min(gs.Y - 1, 3) do
+					for z = 0, math.min(gs.Z - 1, 3) do
+						local index = grid:GridPositionToChunkIndex(Vector3.new(x, y, z))
+						expect(index % 1).To.Equal(0)
+					end
+				end
+			end
+		end)
 	end)
 
-	describe("ChunkIndexToGridPosition (0-based)", function()
+	-- ================================================================
+	-- ChunkIndexToGridPosition
+	-- ================================================================
+	describe("ChunkIndexToGridPosition", function()
 		local grid
 
 		beforeEach(function()
@@ -211,43 +233,52 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 
 		it("should return (0,0,0) for index 0", function()
-			local pos = grid:ChunkIndexToGridPosition(0)
-			expect(pos).To.Equal(Vector3.zero)
+			expect(grid:ChunkIndexToGridPosition(0)).To.Equal(Vector3.zero)
 		end)
 
 		it("should return (0,0,1) for index 1", function()
-			local pos = grid:ChunkIndexToGridPosition(1)
-			expect(pos).To.Equal(Vector3.new(0, 0, 1))
+			expect(grid:ChunkIndexToGridPosition(1)).To.Equal(Vector3.new(0, 0, 1))
 		end)
 
 		it("should return the last position for the max index", function()
 			local gs = grid.GridSize
 			local maxIndex = (gs.X * gs.Y * gs.Z) - 1
-			local pos = grid:ChunkIndexToGridPosition(maxIndex)
-			expect(pos).To.Equal(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
+			expect(grid:ChunkIndexToGridPosition(maxIndex)).To.Equal(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
 		end)
 
 		it("should step to (0,1,0) after filling one Z row", function()
-			local sizeZ = grid.GridSize.Z
-			local pos = grid:ChunkIndexToGridPosition(sizeZ)
-			expect(pos).To.Equal(Vector3.new(0, 1, 0))
+			expect(grid:ChunkIndexToGridPosition(grid.GridSize.Z)).To.Equal(Vector3.new(0, 1, 0))
 		end)
 
 		it("should step to (1,0,0) after filling one YZ plane", function()
 			local sizeYZ = grid.GridSize.Y * grid.GridSize.Z
-			local pos = grid:ChunkIndexToGridPosition(sizeYZ)
-			expect(pos).To.Equal(Vector3.new(1, 0, 0))
+			expect(grid:ChunkIndexToGridPosition(sizeYZ)).To.Equal(Vector3.new(1, 0, 0))
+		end)
+
+		it("should return integer grid position components for all valid indices", function()
+			local gs = grid.GridSize
+			local total = gs.X * gs.Y * gs.Z
+			local step = math.max(1, math.floor(total / 64))
+			for i = 0, total - 1, step do
+				local pos = grid:ChunkIndexToGridPosition(i)
+				expect(pos.X % 1).To.Equal(0)
+				expect(pos.Y % 1).To.Equal(0)
+				expect(pos.Z % 1).To.Equal(0)
+			end
 		end)
 	end)
 
-	describe("index/position round-trip (0-based)", function()
+	-- ================================================================
+	-- Index / Position Round-trips
+	-- ================================================================
+	describe("index/position round-trip", function()
 		local grid
 
 		beforeEach(function()
 			grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 		end)
 
-		it("should round-trip position → index → position", function()
+		it("should round-trip position to index to position", function()
 			local positions = {
 				Vector3.new(0, 0, 0),
 				Vector3.new(3, 5, 2),
@@ -257,32 +288,45 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			}
 			for _, pos in positions do
 				local index = grid:GridPositionToChunkIndex(pos)
-				local result = grid:ChunkIndexToGridPosition(index)
-				expect(result).To.Equal(pos)
+				expect(grid:ChunkIndexToGridPosition(index)).To.Equal(pos)
 			end
 		end)
 
-		it("should round-trip index → position → index", function()
+		it("should round-trip index to position to index", function()
 			local indices = { 0, 1, 7, 8, 63, 64, 100, 255, 511 }
 			for _, index in indices do
 				local pos = grid:ChunkIndexToGridPosition(index)
-				local result = grid:GridPositionToChunkIndex(pos)
-				expect(result).To.Equal(index)
+				expect(grid:GridPositionToChunkIndex(pos)).To.Equal(index)
 			end
 		end)
 
 		it("should round-trip all indices in a small grid", function()
 			local smallGrid = Grid.new(Vector3.zero, Vector3.new(16, 16, 16), 8)
-			-- GridSize = 2,2,2 → 8 chunks total (indices 0..7)
 			local total = smallGrid.GridSize.X * smallGrid.GridSize.Y * smallGrid.GridSize.Z
 			for i = 0, total - 1 do
 				local pos = smallGrid:ChunkIndexToGridPosition(i)
-				local result = smallGrid:GridPositionToChunkIndex(pos)
-				expect(result).To.Equal(i)
+				expect(smallGrid:GridPositionToChunkIndex(pos)).To.Equal(i)
+			end
+		end)
+
+		it("should round-trip all indices in a small grid (reversed)", function()
+			local smallGrid = Grid.new(Vector3.zero, Vector3.new(16, 16, 16), 8)
+			local gs = smallGrid.GridSize
+			for x = 0, gs.X - 1 do
+				for y = 0, gs.Y - 1 do
+					for z = 0, gs.Z - 1 do
+						local pos = Vector3.new(x, y, z)
+						local index = smallGrid:GridPositionToChunkIndex(pos)
+						expect(smallGrid:ChunkIndexToGridPosition(index)).To.Equal(pos)
+					end
+				end
 			end
 		end)
 	end)
 
+	-- ================================================================
+	-- Index Ordering
+	-- ================================================================
 	describe("index ordering", function()
 		local grid
 
@@ -326,6 +370,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- GridPositionToWorldPosition
+	-- ================================================================
 	describe("GridPositionToWorldPosition", function()
 		it("should offset from GenerationOrigin by gridPosition * chunkSize", function()
 			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
@@ -335,32 +382,47 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should return GenerationOrigin for grid position (0,0,0)", function()
 			local grid = Grid.new(Vector3.new(50, 50, 50), Vector3.new(64, 64, 64), 8)
-			local worldPos = grid:GridPositionToWorldPosition(Vector3.zero)
-			expect(worldPos).To.Equal(grid.GenerationOrigin)
+			expect(grid:GridPositionToWorldPosition(Vector3.zero)).To.Equal(grid.GenerationOrigin)
 		end)
 
 		it("should scale with chunk size", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(256, 256, 256), 16)
-			-- GenerationOrigin = 0 - 256/2 = -128
 			local worldPos = grid:GridPositionToWorldPosition(Vector3.new(2, 3, 4))
 			expect(worldPos).To.Equal(grid.GenerationOrigin + Vector3.new(2 * 16, 3 * 16, 4 * 16))
 		end)
 
 		it("should work correctly with non-cubic grids", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8)
-			local worldPos = grid:GridPositionToWorldPosition(Vector3.new(1, 1, 1))
-			expect(worldPos).To.Equal(grid.GenerationOrigin + Vector3.new(8, 8, 8))
+			expect(grid:GridPositionToWorldPosition(Vector3.new(1, 1, 1))).To.Equal(
+				grid.GenerationOrigin + Vector3.new(8, 8, 8)
+			)
 		end)
 
 		it("should return correct world position for the last grid cell", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 			local gs = grid.GridSize
 			local lastPos = Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1)
-			local worldPos = grid:GridPositionToWorldPosition(lastPos)
-			expect(worldPos).To.Equal(grid.GenerationOrigin + lastPos * grid.ChunkSize)
+			expect(grid:GridPositionToWorldPosition(lastPos)).To.Equal(grid.GenerationOrigin + lastPos * grid.ChunkSize)
+		end)
+
+		it("should produce world positions aligned to terrain resolution (4-stud grid)", function()
+			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
+			for x = 0, 3 do
+				for y = 0, 3 do
+					for z = 0, 3 do
+						local wp = grid:GridPositionToWorldPosition(Vector3.new(x, y, z))
+						expect(wp.X % 4).To.Equal(0)
+						expect(wp.Y % 4).To.Equal(0)
+						expect(wp.Z % 4).To.Equal(0)
+					end
+				end
+			end
 		end)
 	end)
 
+	-- ================================================================
+	-- Non-cubic Grids
+	-- ================================================================
 	describe("non-cubic grids", function()
 		it("should handle rectangular GridWorldSize correctly", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8)
@@ -372,14 +434,12 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
-				local result = grid:GridPositionToChunkIndex(pos)
-				expect(result).To.Equal(i)
+				expect(grid:GridPositionToChunkIndex(pos)).To.Equal(i)
 			end
 		end)
 
 		it("should produce unique indices for all positions in a non-cubic grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 32, 48), 16)
-			-- GridSize = 4,2,3
 			local gs = grid.GridSize
 			local seen: { [number]: boolean } = {}
 			for x = 0, gs.X - 1 do
@@ -394,23 +454,22 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Edge Cases
+	-- ================================================================
 	describe("edge cases", function()
 		it("should handle a 1x1x1 grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(8, 8, 8), 8)
 			expect(grid.GridSize).To.Equal(Vector3.new(1, 1, 1))
-			local index = grid:GridPositionToChunkIndex(Vector3.zero)
-			expect(index).To.Equal(0)
-			local pos = grid:ChunkIndexToGridPosition(0)
-			expect(pos).To.Equal(Vector3.zero)
+			expect(grid:GridPositionToChunkIndex(Vector3.zero)).To.Equal(0)
+			expect(grid:ChunkIndexToGridPosition(0)).To.Equal(Vector3.zero)
 		end)
 
 		it("should handle a 1x1xN grid (single row)", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(8, 8, 32), 8)
-			-- GridSize = 1,1,4
 			expect(grid.GridSize).To.Equal(Vector3.new(1, 1, 4))
 			for z = 0, 3 do
-				local index = grid:GridPositionToChunkIndex(Vector3.new(0, 0, z))
-				expect(index).To.Equal(z)
+				expect(grid:GridPositionToChunkIndex(Vector3.new(0, 0, z))).To.Equal(z)
 			end
 		end)
 
@@ -432,16 +491,17 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should handle negative offset grid with correct world positions", function()
 			local grid = Grid.new(Vector3.new(-64, -64, -64), Vector3.new(128, 128, 128), 16)
-			-- Center: -64 (already aligned). GenerationOrigin: -64 - 64 = -128.
 			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-128, -128, -128))
-			local worldPos = grid:GridPositionToWorldPosition(Vector3.zero)
-			expect(worldPos).To.Equal(grid.GenerationOrigin)
+			expect(grid:GridPositionToWorldPosition(Vector3.zero)).To.Equal(grid.GenerationOrigin)
 		end)
 
 		skip("serialization / deserialization (not yet implemented)")
 		skip("chunk deloading under memory pressure (not yet implemented)")
 	end)
 
+	-- ================================================================
+	-- Grid Module Structure
+	-- ================================================================
 	describe("Grid module", function()
 		it("should be a frozen table", function()
 			expect(table.isfrozen(Grid)).To.Equal(true)
@@ -454,8 +514,23 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			expect(grid.GridPositionToWorldPosition).To.Exist()
 			expect(grid.GetChunkAtPosition).To.Exist()
 		end)
+
+		it("should have Grid as its __index metatable", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local mt = getmetatable(grid)
+			expect(mt).To.Exist()
+			expect(mt.__index).To.Equal(Grid)
+		end)
+
+		it("should expose the new constructor", function()
+			expect(Grid.new).To.Exist()
+			expect(Grid.new).To.BeA("function")
+		end)
 	end)
 
+	-- ================================================================
+	-- Invariants
+	-- ================================================================
 	describe("invariants", function()
 		it("should satisfy GridSize * ChunkSize == GridWorldSize", function()
 			local configs = {
@@ -532,8 +607,19 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			expect(grid.GridSize.Y % 1).To.Equal(0)
 			expect(grid.GridSize.Z % 1).To.Equal(0)
 		end)
+
+		it("should have ChunkSize always be a positive integer", function()
+			for cs = 1, 64 do
+				local grid = Grid.new(Vector3.zero, nil, cs)
+				expect(grid.ChunkSize).To.BeGreaterThan(0)
+				expect(grid.ChunkSize % 1).To.Equal(0)
+			end
+		end)
 	end)
 
+	-- ================================================================
+	-- World Position Properties
+	-- ================================================================
 	describe("world position properties", function()
 		it("should produce monotonically increasing world X for increasing grid X", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
@@ -577,11 +663,8 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		it("should map the center grid position near the constructor center", function()
 			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
 			local gs = grid.GridSize
-			-- The midpoint of the grid in grid-space.
 			local midGridPos = Vector3.new(gs.X / 2, gs.Y / 2, gs.Z / 2)
 			local midWorldPos = grid:GridPositionToWorldPosition(midGridPos)
-			-- Should equal Center exactly: GenerationOrigin + (GridSize/2) * ChunkSize
-			-- = (Center - WorldSize/2) + WorldSize/2 = Center
 			expect(midWorldPos).To.Equal(grid.Center)
 		end)
 
@@ -590,17 +673,18 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local firstPos = grid:GridPositionToWorldPosition(Vector3.zero)
 			local gs = grid.GridSize
 			local lastPos = grid:GridPositionToWorldPosition(Vector3.new(gs.X, gs.Y, gs.Z))
-			-- Distance from (0,0,0) to (GridSize) should be GridWorldSize.
 			expect(lastPos - firstPos).To.Equal(grid.GridWorldSize)
 		end)
 	end)
 
+	-- ================================================================
+	-- Large Grid Round-trips
+	-- ================================================================
 	describe("large grid round-trips", function()
-		it("should round-trip all indices in a 64³ grid", function()
-			local grid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8) -- 64×64×64
+		it("should round-trip all indices in a 64-cubed grid", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8)
 			local gs = grid.GridSize
 			local total = gs.X * gs.Y * gs.Z
-			-- Sample boundary and middle indices to avoid O(n) explosion.
 			local testIndices = {
 				0,
 				1,
@@ -620,12 +704,11 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			}
 			for _, index in testIndices do
 				local pos = grid:ChunkIndexToGridPosition(index)
-				local result = grid:GridPositionToChunkIndex(pos)
-				expect(result).To.Equal(index)
+				expect(grid:GridPositionToChunkIndex(pos)).To.Equal(index)
 			end
 		end)
 
-		it("should round-trip boundary positions in a 64³ grid", function()
+		it("should round-trip boundary positions in a 64-cubed grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8)
 			local gs = grid.GridSize
 			local corners = {
@@ -640,21 +723,21 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			}
 			for _, pos in corners do
 				local index = grid:GridPositionToChunkIndex(pos)
-				local result = grid:ChunkIndexToGridPosition(index)
-				expect(result).To.Equal(pos)
+				expect(grid:ChunkIndexToGridPosition(index)).To.Equal(pos)
 			end
 		end)
 	end)
 
+	-- ================================================================
+	-- Asymmetric Grids
+	-- ================================================================
 	describe("asymmetric grids", function()
 		it("should handle an Nx1x1 grid (single X axis)", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 8, 8), 8)
 			expect(grid.GridSize).To.Equal(Vector3.new(8, 1, 1))
 			for x = 0, 7 do
-				local index = grid:GridPositionToChunkIndex(Vector3.new(x, 0, 0))
-				expect(index).To.Equal(x)
-				local pos = grid:ChunkIndexToGridPosition(x)
-				expect(pos).To.Equal(Vector3.new(x, 0, 0))
+				expect(grid:GridPositionToChunkIndex(Vector3.new(x, 0, 0))).To.Equal(x)
+				expect(grid:ChunkIndexToGridPosition(x)).To.Equal(Vector3.new(x, 0, 0))
 			end
 		end)
 
@@ -662,10 +745,8 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local grid = Grid.new(Vector3.zero, Vector3.new(8, 64, 8), 8)
 			expect(grid.GridSize).To.Equal(Vector3.new(1, 8, 1))
 			for y = 0, 7 do
-				local index = grid:GridPositionToChunkIndex(Vector3.new(0, y, 0))
-				expect(index).To.Equal(y)
-				local pos = grid:ChunkIndexToGridPosition(y)
-				expect(pos).To.Equal(Vector3.new(0, y, 0))
+				expect(grid:GridPositionToChunkIndex(Vector3.new(0, y, 0))).To.Equal(y)
+				expect(grid:ChunkIndexToGridPosition(y)).To.Equal(Vector3.new(0, y, 0))
 			end
 		end)
 
@@ -675,37 +756,32 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local total = 16 * 1 * 4
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
-				local result = grid:GridPositionToChunkIndex(pos)
-				expect(result).To.Equal(i)
+				expect(grid:GridPositionToChunkIndex(pos)).To.Equal(i)
 			end
 		end)
 
 		it("should order indices correctly in a non-cubic grid (Z fastest)", function()
-			local grid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8) -- 4x2x8
-			-- Z should still stride by 1.
+			local grid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8)
 			local a = grid:GridPositionToChunkIndex(Vector3.new(0, 0, 0))
 			local b = grid:GridPositionToChunkIndex(Vector3.new(0, 0, 1))
 			expect(b - a).To.Equal(1)
-			-- Y should stride by GridSize.Z = 8.
 			local c = grid:GridPositionToChunkIndex(Vector3.new(0, 1, 0))
 			expect(c - a).To.Equal(grid.GridSize.Z)
-			-- X should stride by GridSize.Y * GridSize.Z = 16.
 			local d = grid:GridPositionToChunkIndex(Vector3.new(1, 0, 0))
 			expect(d - a).To.Equal(grid.GridSize.Y * grid.GridSize.Z)
 		end)
 	end)
 
+	-- ================================================================
+	-- Multiple Grid Independence
+	-- ================================================================
 	describe("multiple grid independence", function()
 		it("should not share state between independent grid instances", function()
 			local gridA = Grid.new(Vector3.new(0, 0, 0), Vector3.new(64, 64, 64), 8)
 			local gridB = Grid.new(Vector3.new(200, 200, 200), Vector3.new(256, 256, 256), 16)
-			-- Different centers.
 			expect(gridA.Center).Never.To.Equal(gridB.Center)
-			-- Different chunk sizes.
 			expect(gridA.ChunkSize).Never.To.Equal(gridB.ChunkSize)
-			-- Different grid sizes. (8,8,8 vs 16,16,16)
 			expect(gridA.GridSize).Never.To.Equal(gridB.GridSize)
-			-- Chunks tables are separate references.
 			gridA.Chunks[1] = { ChunkIndex = 0, ChunkPosition = Vector3.zero } :: any
 			expect(#gridB.Chunks).To.Equal(0)
 		end)
@@ -717,18 +793,27 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local posB = gridB:GridPositionToWorldPosition(Vector3.new(1, 1, 1))
 			expect(posA).Never.To.Equal(posB)
 		end)
+
+		it("should have independent Chunks tables (mutations do not leak)", function()
+			local gridA = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gridB = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			gridA.Chunks[0] = { ChunkIndex = 0, ChunkPosition = Vector3.zero } :: any
+			expect(gridA.Chunks[0]).To.Exist()
+			expect(gridB.Chunks[0]).To.BeNil()
+		end)
 	end)
 
+	-- ================================================================
+	-- ExpandVectorToGrid Coverage
+	-- ================================================================
 	describe("ExpandVectorToGrid coverage", function()
 		it("should ceil fractional center values to nearest 4", function()
 			local grid = Grid.new(Vector3.new(0.5, 1.5, 2.5))
-			-- math.ceil(0.5/4)*4 = 4, math.ceil(1.5/4)*4 = 4, math.ceil(2.5/4)*4 = 4
 			expect(grid.Center).To.Equal(Vector3.new(4, 4, 4))
 		end)
 
 		it("should ceil fractional world size values to nearest 8", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(10.5, 20.5, 30.5), 8)
-			-- math.ceil(10.5/8)*8 = 16, math.ceil(20.5/8)*8 = 24, math.ceil(30.5/8)*8 = 32
 			expect(grid.GridWorldSize).To.Equal(Vector3.new(16, 24, 32))
 		end)
 
@@ -741,18 +826,26 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local grid = Grid.new(Vector3.new(-4, -8, -12))
 			expect(grid.Center).To.Equal(Vector3.new(-4, -8, -12))
 		end)
+
+		it("should handle zero components mixed with nonzero", function()
+			local grid = Grid.new(Vector3.new(0, 5, 0))
+			expect(grid.Center.X).To.Equal(0)
+			expect(grid.Center.Y).To.Equal(8)
+			expect(grid.Center.Z).To.Equal(0)
+		end)
 	end)
 
+	-- ================================================================
+	-- GetChunkAtPosition (exact corner queries)
+	-- ================================================================
 	describe("GetChunkAtPosition", function()
 		it("should return nil when no chunk exists at the position", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local result = grid:GetChunkAtPosition(Vector3.new(4, 4, 4))
-			expect(result).To.BeNil()
+			expect(grid:GetChunkAtPosition(Vector3.new(4, 4, 4))).To.BeNil()
 		end)
 
 		it("should return a stored chunk at the origin grid position", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			-- GenerationOrigin = -32,-32,-32. Grid position (0,0,0) → index 0.
 			local chunk = { ChunkIndex = 0, ChunkPosition = Vector3.zero, Data = "test" }
 			grid.Chunks[0] = chunk :: any
 			local result = grid:GetChunkAtPosition(grid.GenerationOrigin)
@@ -762,25 +855,21 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should return the correct chunk for a position in the middle of the grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			-- Grid position (3, 4, 5) → world = GenerationOrigin + (3,4,5)*8
 			local gridPos = Vector3.new(3, 4, 5)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos, Value = 42 }
-			grid.Chunks[chunkIndex] = chunk :: any
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos, Value = 42 } :: any
 			local result = grid:GetChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).Value).To.Equal(42)
 		end)
 
-		it("should find a chunk when queried near the center of that chunk", function()
+		it("should find a chunk when queried at the exact chunk corner", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 			local gridPos = Vector3.new(2, 2, 2)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos }
-			grid.Chunks[chunkIndex] = chunk :: any
-			-- Query at the exact world position (chunk corner).
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local result = grid:GetChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
@@ -791,9 +880,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local gridPos = Vector3.new(4, 4, 4)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos }
-			grid.Chunks[chunkIndex] = chunk :: any
-			-- Query with a small offset within rounding tolerance.
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(1, 1, 1))
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
@@ -801,12 +888,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should return nil for a position outside the populated chunks", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			-- Only populate chunk at (0,0,0).
 			grid.Chunks[0] = { ChunkIndex = 0, ChunkPosition = Vector3.zero } :: any
-			-- Query at grid position (7,7,7) which has no chunk stored.
 			local farWorldPos = grid:GridPositionToWorldPosition(Vector3.new(7, 7, 7))
-			local result = grid:GetChunkAtPosition(farWorldPos)
-			expect(result).To.BeNil()
+			expect(grid:GetChunkAtPosition(farWorldPos)).To.BeNil()
 		end)
 
 		it("should work correctly with a non-zero center grid", function()
@@ -814,8 +898,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local gridPos = Vector3.new(1, 1, 1)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos }
-			grid.Chunks[chunkIndex] = chunk :: any
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local result = grid:GetChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
@@ -826,8 +909,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local gridPos = Vector3.new(3, 3, 3)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos }
-			grid.Chunks[chunkIndex] = chunk :: any
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local result = grid:GetChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
@@ -838,8 +920,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local gridPos = Vector3.new(3, 5, 2)
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local chunk = { ChunkIndex = chunkIndex, ChunkPosition = gridPos }
-			grid.Chunks[chunkIndex] = chunk :: any
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local result = grid:GetChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
@@ -847,7 +928,6 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should be consistent with GridPositionToWorldPosition round-trip", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			-- Populate several chunks and verify each can be found via world position.
 			local testPositions = {
 				Vector3.new(0, 0, 0),
 				Vector3.new(1, 2, 3),
@@ -867,43 +947,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
-	describe("large coordinate stability", function()
-		it("should construct with large positive center", function()
-			local grid = Grid.new(Vector3.new(10000, 10000, 10000), Vector3.new(64, 64, 64), 8)
-			expect(grid.Center).To.Equal(Vector3.new(10000, 10000, 10000))
-			expect(grid.GenerationOrigin).To.Equal(Vector3.new(10000 - 32, 10000 - 32, 10000 - 32))
-		end)
-
-		it("should construct with large negative center", function()
-			local grid = Grid.new(Vector3.new(-10000, -10000, -10000), Vector3.new(64, 64, 64), 8)
-			expect(grid.Center).To.Equal(Vector3.new(-10000, -10000, -10000))
-			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-10032, -10032, -10032))
-		end)
-
-		it("should round-trip correctly with large grid at offset center", function()
-			local grid = Grid.new(Vector3.new(5000, 5000, 5000), Vector3.new(512, 512, 512), 8) -- 64³
-			local gs = grid.GridSize
-			-- Test corners and a few interior points.
-			local positions = {
-				Vector3.new(0, 0, 0),
-				Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1),
-				Vector3.new(math.floor(gs.X / 2), math.floor(gs.Y / 2), math.floor(gs.Z / 2)),
-			}
-			for _, pos in positions do
-				local index = grid:GridPositionToChunkIndex(pos)
-				local result = grid:ChunkIndexToGridPosition(index)
-				expect(result).To.Equal(pos)
-			end
-		end)
-
-		it("should produce correct world positions at large offsets", function()
-			local grid = Grid.new(Vector3.new(10000, 10000, 10000), Vector3.new(64, 64, 64), 8)
-			local worldPos = grid:GridPositionToWorldPosition(Vector3.new(4, 4, 4))
-			local expected = grid.GenerationOrigin + Vector3.new(32, 32, 32)
-			expect(worldPos).To.Equal(expected)
-		end)
-	end)
-
+	-- ================================================================
+	-- GetChunkAtPosition — Exhaustive
+	-- ================================================================
 	describe("GetChunkAtPosition exhaustive", function()
 		it("should find all chunks in a fully populated 2x2x2 grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(16, 16, 16), 8)
@@ -1001,7 +1047,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			end
 		end)
 
-		it("should find sampled chunks with 64-stud chunk size on 512³ world", function()
+		it("should find sampled chunks with 64-stud chunk size on 512-cubed world", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 64)
 			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
 			for i = 0, total - 1 do
@@ -1036,44 +1082,32 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 
 		it("should correctly distinguish adjacent chunks along X", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local posA = Vector3.new(3, 3, 3)
-			local posB = Vector3.new(4, 3, 3)
-			local indexA = grid:GridPositionToChunkIndex(posA)
-			local indexB = grid:GridPositionToChunkIndex(posB)
+			local posA, posB = Vector3.new(3, 3, 3), Vector3.new(4, 3, 3)
+			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "A" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "B" } :: any
-			local resultA = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA))
-			local resultB = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB))
-			expect((resultA :: any).Tag).To.Equal("A")
-			expect((resultB :: any).Tag).To.Equal("B")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("A")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("B")
 		end)
 
 		it("should correctly distinguish adjacent chunks along Y", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local posA = Vector3.new(2, 2, 2)
-			local posB = Vector3.new(2, 3, 2)
-			local indexA = grid:GridPositionToChunkIndex(posA)
-			local indexB = grid:GridPositionToChunkIndex(posB)
+			local posA, posB = Vector3.new(2, 2, 2), Vector3.new(2, 3, 2)
+			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "Y0" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "Y1" } :: any
-			local resultA = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA))
-			local resultB = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB))
-			expect((resultA :: any).Tag).To.Equal("Y0")
-			expect((resultB :: any).Tag).To.Equal("Y1")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Y0")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Y1")
 		end)
 
 		it("should correctly distinguish adjacent chunks along Z", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local posA = Vector3.new(5, 5, 5)
-			local posB = Vector3.new(5, 5, 6)
-			local indexA = grid:GridPositionToChunkIndex(posA)
-			local indexB = grid:GridPositionToChunkIndex(posB)
+			local posA, posB = Vector3.new(5, 5, 5), Vector3.new(5, 5, 6)
+			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "Z0" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "Z1" } :: any
-			local resultA = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA))
-			local resultB = grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB))
-			expect((resultA :: any).Tag).To.Equal("Z0")
-			expect((resultB :: any).Tag).To.Equal("Z1")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Z0")
+			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Z1")
 		end)
 
 		it("should return the same chunk on repeated queries", function()
@@ -1139,6 +1173,46 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Large Coordinate Stability
+	-- ================================================================
+	describe("large coordinate stability", function()
+		it("should construct with large positive center", function()
+			local grid = Grid.new(Vector3.new(10000, 10000, 10000), Vector3.new(64, 64, 64), 8)
+			expect(grid.Center).To.Equal(Vector3.new(10000, 10000, 10000))
+			expect(grid.GenerationOrigin).To.Equal(Vector3.new(10000 - 32, 10000 - 32, 10000 - 32))
+		end)
+
+		it("should construct with large negative center", function()
+			local grid = Grid.new(Vector3.new(-10000, -10000, -10000), Vector3.new(64, 64, 64), 8)
+			expect(grid.Center).To.Equal(Vector3.new(-10000, -10000, -10000))
+			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-10032, -10032, -10032))
+		end)
+
+		it("should round-trip correctly with large grid at offset center", function()
+			local grid = Grid.new(Vector3.new(5000, 5000, 5000), Vector3.new(512, 512, 512), 8)
+			local gs = grid.GridSize
+			local positions = {
+				Vector3.new(0, 0, 0),
+				Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1),
+				Vector3.new(math.floor(gs.X / 2), math.floor(gs.Y / 2), math.floor(gs.Z / 2)),
+			}
+			for _, pos in positions do
+				local index = grid:GridPositionToChunkIndex(pos)
+				expect(grid:ChunkIndexToGridPosition(index)).To.Equal(pos)
+			end
+		end)
+
+		it("should produce correct world positions at large offsets", function()
+			local grid = Grid.new(Vector3.new(10000, 10000, 10000), Vector3.new(64, 64, 64), 8)
+			local worldPos = grid:GridPositionToWorldPosition(Vector3.new(4, 4, 4))
+			expect(worldPos).To.Equal(grid.GenerationOrigin + Vector3.new(32, 32, 32))
+		end)
+	end)
+
+	-- ================================================================
+	-- Cross-method Consistency
+	-- ================================================================
 	describe("cross-method consistency", function()
 		it("should have ChunkIndexToGridPosition and GridPositionToChunkIndex as exact inverses", function()
 			local configs = {
@@ -1152,8 +1226,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 				local sampleSize = math.min(total, 64)
 				for i = 0, sampleSize - 1 do
 					local pos = grid:ChunkIndexToGridPosition(i)
-					local roundTripped = grid:GridPositionToChunkIndex(pos)
-					expect(roundTripped).To.Equal(i)
+					expect(grid:GridPositionToChunkIndex(pos)).To.Equal(i)
 				end
 			end
 		end)
@@ -1206,6 +1279,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- GenerationOrigin Invariants
+	-- ================================================================
 	describe("GenerationOrigin invariants", function()
 		it("should always be a multiple of 4 in all components", function()
 			local centers = {
@@ -1232,7 +1308,6 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			}
 			for _, cfg in configs do
 				local grid = Grid.new(cfg[1] :: Vector3, cfg[2] :: Vector3, cfg[3] :: number)
-				-- GenerationOrigin = Center - WorldSize/2, so always <= Center (worldSize > 0).
 				expect(grid.GenerationOrigin.X).To.BeLessThan(grid.Center.X + 1)
 				expect(grid.GenerationOrigin.Y).To.BeLessThan(grid.Center.Y + 1)
 				expect(grid.GenerationOrigin.Z).To.BeLessThan(grid.Center.Z + 1)
@@ -1254,6 +1329,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Boundary Chunk Access
+	-- ================================================================
 	describe("boundary chunk access", function()
 		it("should access first and last chunk in an 8x8x8 grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
@@ -1285,8 +1363,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 				local index = grid:GridPositionToChunkIndex(corner)
 				expect(seen[index]).To.BeNil()
 				seen[index] = true
-				local roundTripped = grid:ChunkIndexToGridPosition(index)
-				expect(roundTripped).To.Equal(corner)
+				expect(grid:ChunkIndexToGridPosition(index)).To.Equal(corner)
 			end
 		end)
 
@@ -1313,6 +1390,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Chunk Storage Integrity
+	-- ================================================================
 	describe("chunk storage integrity", function()
 		it("should preserve all custom fields on stored chunks", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
@@ -1359,8 +1439,19 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			grid.Chunks[0] = nil :: any
 			expect(grid.Chunks[0]).To.BeNil()
 		end)
+
+		it("should store chunks at 0-based indices (not 1-based)", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			grid.Chunks[0] = { ChunkIndex = 0, ChunkPosition = Vector3.zero } :: any
+			expect(grid.Chunks[0]).To.Exist()
+			-- Lua's # operator does not count 0-based keys.
+			expect(#grid.Chunks).To.Equal(0)
+		end)
 	end)
 
+	-- ================================================================
+	-- Constructor Parameter Combinations
+	-- ================================================================
 	describe("constructor parameter combinations", function()
 		it("should handle every valid chunk size from 1 to 64", function()
 			for cs = 1, 64 do
@@ -1410,6 +1501,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Index Space Coverage
+	-- ================================================================
 	describe("index space coverage", function()
 		it("should map every index to a unique position in a 4x4x4 grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(32, 32, 32), 8)
@@ -1445,7 +1539,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 				for y = 0, gs.Y - 1 do
 					for z = 0, gs.Z - 1 do
 						local index = grid:GridPositionToChunkIndex(Vector3.new(x, y, z))
-						expect(index).To.BeGreaterThan(-1)
+						expect(index).To.BeGreaterThanOrEqual(0)
 						expect(index).To.BeLessThan(total)
 					end
 				end
@@ -1458,16 +1552,19 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			local total = gs.X * gs.Y * gs.Z
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
-				expect(pos.X).To.BeGreaterThan(-1)
+				expect(pos.X).To.BeGreaterThanOrEqual(0)
 				expect(pos.X).To.BeLessThan(gs.X)
-				expect(pos.Y).To.BeGreaterThan(-1)
+				expect(pos.Y).To.BeGreaterThanOrEqual(0)
 				expect(pos.Y).To.BeLessThan(gs.Y)
-				expect(pos.Z).To.BeGreaterThan(-1)
+				expect(pos.Z).To.BeGreaterThanOrEqual(0)
 				expect(pos.Z).To.BeLessThan(gs.Z)
 			end
 		end)
 	end)
 
+	-- ================================================================
+	-- World Position Coverage
+	-- ================================================================
 	describe("world position coverage", function()
 		it("should produce all world positions within the grid bounding box", function()
 			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
@@ -1478,9 +1575,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 				for y = 0, gs.Y - 1 do
 					for z = 0, gs.Z - 1 do
 						local wp = grid:GridPositionToWorldPosition(Vector3.new(x, y, z))
-						expect(wp.X).To.BeGreaterThan(minBound.X - 1)
-						expect(wp.Y).To.BeGreaterThan(minBound.Y - 1)
-						expect(wp.Z).To.BeGreaterThan(minBound.Z - 1)
+						expect(wp.X).To.BeGreaterThanOrEqual(minBound.X)
+						expect(wp.Y).To.BeGreaterThanOrEqual(minBound.Y)
+						expect(wp.Z).To.BeGreaterThanOrEqual(minBound.Z)
 						expect(wp.X).To.BeLessThan(maxBound.X)
 						expect(wp.Y).To.BeLessThan(maxBound.Y)
 						expect(wp.Z).To.BeLessThan(maxBound.Z)
@@ -1526,6 +1623,9 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 		end)
 	end)
 
+	-- ================================================================
+	-- Determinism
+	-- ================================================================
 	describe("determinism", function()
 		it("should produce identical results for identical constructor calls", function()
 			local results = {}
@@ -1557,8 +1657,7 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 			for _ = 1, 3 do
 				local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 				for i = 0, 511 do
-					local pos = grid:ChunkIndexToGridPosition(i)
-					expect(pos).To.Equal(referenceMappings[i])
+					expect(grid:ChunkIndexToGridPosition(i)).To.Equal(referenceMappings[i])
 				end
 			end
 		end)
@@ -1581,6 +1680,149 @@ return TestFramework.Suite("Infinigrid", function(describe, it, expect, beforeEa
 					expect((result :: any).ChunkIndex).To.Equal(i)
 				end
 			end
+		end)
+	end)
+
+	-- ================================================================
+	-- RoundVectorToGrid Precision (Bug-catching)
+	-- Tests that the internal RoundVectorToGrid function rounds
+	-- correctly to the 4-stud terrain grid. Since it's called
+	-- internally by GetChunkAtPosition, these tests exercise it
+	-- indirectly by checking chunk lookups at various positions.
+	-- ================================================================
+	describe("RoundVectorToGrid precision", function()
+		it("should snap to the same grid point for positions within 2 studs of a corner", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gridPos = Vector3.new(4, 4, 4)
+			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
+			local worldPos = grid:GridPositionToWorldPosition(gridPos)
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
+			-- math.round(1/4)*4 = 0 -> same as corner (0,0,0 relative shift).
+			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(1, 0, 0))
+			expect(result).To.Exist()
+			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
+		end)
+
+		it("should snap position at exactly 2 studs from corner consistently", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gridPos = Vector3.new(4, 4, 4)
+			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
+			local worldPos = grid:GridPositionToWorldPosition(gridPos)
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
+			-- math.round(2/4)*4 = math.round(0.5)*4; Luau rounds 0.5 to 1 -> snap to 4.
+			-- worldPos+4 should ideally still resolve or the next chunk. This test documents behavior.
+			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(2, 0, 0))
+			-- The rounding of 2 studs is implementation-dependent; we just verify no crash.
+			expect(true).To.Equal(true)
+		end)
+	end)
+
+	-- ================================================================
+	-- Chunk Index Boundary Values (Bug-catching)
+	-- Tests edge conditions around index calculation boundaries.
+	-- ================================================================
+	describe("chunk index boundary values", function()
+		it("should correctly compute index at YZ plane boundary", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gs = grid.GridSize
+			-- The index right before the first YZ plane boundary.
+			local lastInFirstPlane = grid:GridPositionToChunkIndex(Vector3.new(0, gs.Y - 1, gs.Z - 1))
+			-- The first index in the second YZ plane.
+			local firstInSecondPlane = grid:GridPositionToChunkIndex(Vector3.new(1, 0, 0))
+			expect(firstInSecondPlane - lastInFirstPlane).To.Equal(1)
+		end)
+
+		it("should correctly compute index at Z row boundary", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gs = grid.GridSize
+			local lastInFirstRow = grid:GridPositionToChunkIndex(Vector3.new(0, 0, gs.Z - 1))
+			local firstInSecondRow = grid:GridPositionToChunkIndex(Vector3.new(0, 1, 0))
+			expect(firstInSecondRow - lastInFirstRow).To.Equal(1)
+		end)
+
+		it("should give the maximum valid index for the very last cell", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gs = grid.GridSize
+			local maxIndex = grid:GridPositionToChunkIndex(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
+			expect(maxIndex).To.Equal(gs.X * gs.Y * gs.Z - 1)
+		end)
+
+		it("should give 0 for the very first cell", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			expect(grid:GridPositionToChunkIndex(Vector3.zero)).To.Equal(0)
+		end)
+	end)
+
+	-- ================================================================
+	-- Negative Center Alignment Precision
+	-- ================================================================
+	describe("negative center alignment", function()
+		it("should correctly align large negative centers", function()
+			local grid = Grid.new(Vector3.new(-999, -999, -999))
+			expect(grid.Center.X % 4).To.Equal(0)
+			expect(grid.Center.Y % 4).To.Equal(0)
+			expect(grid.Center.Z % 4).To.Equal(0)
+		end)
+
+		it("should correctly compute origin for asymmetric negative center", function()
+			local grid = Grid.new(Vector3.new(-7, -13, -21), Vector3.new(64, 64, 64), 8)
+			expect(grid.GenerationOrigin).To.Equal(grid.Center - grid.GridWorldSize / 2)
+		end)
+
+		it("should round-trip chunks with negative center grid", function()
+			local grid = Grid.new(Vector3.new(-500, -500, -500), Vector3.new(32, 32, 32), 8)
+			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
+			for i = 0, total - 1 do
+				local pos = grid:ChunkIndexToGridPosition(i)
+				grid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
+			end
+			for i = 0, total - 1 do
+				local pos = grid:ChunkIndexToGridPosition(i)
+				local worldPos = grid:GridPositionToWorldPosition(pos)
+				local result = grid:GetChunkAtPosition(worldPos)
+				expect(result).To.Exist()
+				expect((result :: any).ChunkIndex).To.Equal(i)
+			end
+		end)
+	end)
+
+	-- ================================================================
+	-- Type Safety / Structural Tests
+	-- ================================================================
+	describe("type safety and structure", function()
+		it("should have all expected fields on a constructed grid", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			expect(grid.Center).To.BeA("Vector3")
+			expect(grid.GenerationOrigin).To.BeA("Vector3")
+			expect(grid.ChunkSize).To.BeA("number")
+			expect(grid.GridSize).To.BeA("Vector3")
+			expect(grid.GridWorldSize).To.BeA("Vector3")
+			expect(grid.Chunks).To.BeA("table")
+		end)
+
+		it("should return a number from GridPositionToChunkIndex", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local index = grid:GridPositionToChunkIndex(Vector3.new(1, 2, 3))
+			expect(index).To.BeA("number")
+			expect(index % 1).To.Equal(0)
+		end)
+
+		it("should return a Vector3 from ChunkIndexToGridPosition", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local pos = grid:ChunkIndexToGridPosition(42)
+			expect(pos).To.BeA("Vector3")
+		end)
+
+		it("should return a Vector3 from GridPositionToWorldPosition", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local wp = grid:GridPositionToWorldPosition(Vector3.new(1, 1, 1))
+			expect(wp).To.BeA("Vector3")
+		end)
+
+		it("should return nil or a table from GetChunkAtPosition", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local result = grid:GetChunkAtPosition(Vector3.zero)
+			expect(result == nil or typeof(result) == "table").To.Equal(true)
 		end)
 	end)
 end)

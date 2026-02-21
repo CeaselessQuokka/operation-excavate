@@ -1,3 +1,8 @@
+--[[
+	Assertion and matcher library for Litmus test framework.
+	Provides fluent `expect(value).To.Equal(...)` style assertions with negation via `.Never.To`.
+--]]
+
 --!strict
 
 --- Types ---
@@ -15,8 +20,13 @@ export type Matchers = {
 	ContainKey: (key: any) -> (),
 	HaveLength: (expected: number) -> (),
 	BeGreaterThan: (expected: number) -> (),
+	BeGreaterThanOrEqual: (expected: number) -> (),
 	BeLessThan: (expected: number) -> (),
+	BeLessThanOrEqual: (expected: number) -> (),
+	BeInRange: (min: number, max: number) -> (),
 	Match: (pattern: string) -> (),
+	Satisfy: (predicate: (any) -> boolean, description: string?) -> (),
+	BeInteger: () -> (),
 }
 
 export type Expectation = {
@@ -174,12 +184,35 @@ function Expect.new(actual: any): Expectation
 				Check((actual :: number) > expected, `{actual} to be greater than {expected}`)
 			end,
 
+			BeGreaterThanOrEqual = function(expected: number)
+				Check((actual :: number) >= expected, `{actual} to be greater than or equal to {expected}`)
+			end,
+
 			BeLessThan = function(expected: number)
 				Check((actual :: number) < expected, `{actual} to be less than {expected}`)
 			end,
 
+			BeLessThanOrEqual = function(expected: number)
+				Check((actual :: number) <= expected, `{actual} to be less than or equal to {expected}`)
+			end,
+
+			BeInRange = function(min: number, max: number)
+				local val = actual :: number
+				Check(val >= min and val <= max, `{val} to be in range [{min}, {max}]`)
+			end,
+
 			Match = function(pattern: string)
 				Check(string.find(actual :: string, pattern) ~= nil, `"{actual}" to match pattern "{pattern}"`)
+			end,
+
+			Satisfy = function(predicate: (any) -> boolean, description: string?)
+				local desc = description or "custom predicate"
+				Check(predicate(actual), `{FormatValue(actual)} to satisfy {desc}`)
+			end,
+
+			BeInteger = function()
+				local val = actual :: number
+				Check(typeof(val) == "number" and val % 1 == 0, `{FormatValue(actual)} to be an integer`)
 			end,
 		})
 	end

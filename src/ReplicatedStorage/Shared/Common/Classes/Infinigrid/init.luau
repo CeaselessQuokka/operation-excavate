@@ -7,6 +7,8 @@
 	Note: should have a method to serialize and a constructor to do fromSerial. That way it can be easily saved and loaded, and also sent over remotes if needed? I should only be sending patches anyway, but it'd be useful for syncing on join so yeah i guess
 	Note: Perhaps this low memory mode is a serialized version in a buffer or something? ANd this is added to a bigger buffer that has asleep chunks? We would need a lookup buffer hmmm, most likely not worth
 	Note: have viewer able to actually edit the spawnable data real-time with its edit functionality
+
+	TODO WHEN BACK: VERIFY CORRECTNESS OF CURRENT METHODS AND GENERATION BY FILLING OUT THE DEBUGGER TO VISUALIZE CHUNKS (see if Highlight instance will work with BlockMesh scale)
 --]]
 
 --!strict

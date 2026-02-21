@@ -34,11 +34,11 @@ for t = 3, 1, -1 do
 end
 
 -- Run tests.
--- local TestFramework = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework)
--- TestFramework.RunSuite(require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.test"]))
+-- local Litmus = require(ReplicatedStorage.Shared.Litmus)
+-- Litmus.RunSuite(require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.test"]))
 
 -- Run benchmark.
-require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.bench"])
+-- require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.bench"])
 
 -- Generate planet infinigrid for testing.
 -- require(ReplicatedStorage.Shared.Common.Classes.Infinigrid).new(Vector3.zero, Vector3.new(4224, 4224, 4224), 64)
