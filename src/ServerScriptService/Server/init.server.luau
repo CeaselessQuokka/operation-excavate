@@ -28,10 +28,10 @@ Knit.Start()
 		warn(`[Server] Knit failed to start: {err}`)
 	end)
 
-for t = 3, 1, -1 do
-	print(`[Server] Starting in {t}...`)
-	task.wait(1)
-end
+-- for t = 3, 1, -1 do
+-- 	print(`[Server] Starting in {t}...`)
+-- 	task.wait(1)
+-- end
 
 -- Run tests.
 -- local Litmus = require(ReplicatedStorage.Shared.Litmus)

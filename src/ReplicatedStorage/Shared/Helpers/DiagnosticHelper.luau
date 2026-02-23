@@ -42,6 +42,8 @@ export type TimerStats = {
 	Max: number,
 	Median: number,
 	StdDev: number,
+	Jitter: number,
+	CoV: number,
 	Percentiles: { [number]: number },
 	SamplesPerSecond: number?,
 	MemoryDelta: number?,
@@ -90,8 +92,11 @@ export type QuickBenchmarkStats = {
 	Min: number,
 	Max: number,
 	StdDev: number,
+	Jitter: number,
+	CoV: number,
 	P95: number,
 	P99: number,
+	P99_9: number,
 }
 
 export type Diagnostic = {
@@ -140,7 +145,7 @@ local SCRIPT_NAME = script.Name
 local DEFAULT_KEYBIND = Enum.KeyCode.F3
 local currentKeybind: Enum.KeyCode = DEFAULT_KEYBIND
 
-local DEFAULT_PERCENTILES = table.freeze({ 50, 90, 95, 99 })
+local DEFAULT_PERCENTILES = table.freeze({ 50, 90, 95, 99, 99.9 })
 local DEFAULT_OPTIONS: DiagnosticOptions = table.freeze({
 	Enabled = true,
 	DecimalPlaces = 4,
@@ -305,6 +310,8 @@ local function ComputeTimerStats(timer: TimerData, options: DiagnosticOptions): 
 			Max = 0,
 			Median = 0,
 			StdDev = 0,
+			Jitter = 0,
+			CoV = 0,
 			Percentiles = emptyPercentiles,
 			SamplesPerSecond = nil,
 			MemoryDelta = nil,
@@ -338,6 +345,8 @@ local function ComputeTimerStats(timer: TimerData, options: DiagnosticOptions): 
 	-- Bessel-corrected variance from computational formula
 	local variance = math.max(0, (sumSquared / count) - (average * average))
 	local stdDev = if count > 1 then math.sqrt(variance * count / (count - 1)) else 0
+	local jitter = maxVal - minVal
+	local coV = if average > 0 then stdDev / average else 0
 
 	local percentiles: { [number]: number } = {}
 	for _, p in percentilesList do
@@ -377,6 +386,8 @@ local function ComputeTimerStats(timer: TimerData, options: DiagnosticOptions): 
 		Max = maxVal,
 		Median = CalculateMedian(sorted, count),
 		StdDev = stdDev,
+		Jitter = jitter,
+		CoV = coV,
 		Percentiles = percentiles,
 		SamplesPerSecond = if span > 0 then count / span else nil,
 		MemoryDelta = memDelta,
@@ -493,11 +504,30 @@ local function WriteTimerStatsToBuffer(
 	i += 1
 	buf[i] = header
 	i += 1
-	buf[i] = string.format("    %-10s%-20s%-10s%s", "Count:", tostring(stats.Count), "Total:", ft(stats.TotalTime))
+	buf[i] = string.format(
+		"    %-10s%-8s %-10s%s",
+		"Count:",
+		tostring(stats.Count),
+		"Total:",
+		ft(stats.TotalTime)
+			.. "  ("
+			.. FormatBudgetPercent(stats.TotalTime)
+			.. ", "
+			.. FormatCallsPerFrame(stats.TotalTime)
+			.. "/frame)"
+	)
 	i += 1
 	buf[i] = string.format("    %-10s%-20s%-10s%s", "Average:", ft(stats.Average), "Median:", ft(stats.Median))
 	i += 1
 	buf[i] = string.format("    %-10s%-20s%-10s%s", "Min:", ft(stats.Min), "Max:", ft(stats.Max))
+	i += 1
+	buf[i] = string.format(
+		"    %-10s%-20s%-10s%s",
+		"Jitter:",
+		ft(stats.Jitter),
+		"CoV:",
+		string.format("%.2f%%", stats.CoV * 100)
+	)
 
 	if stats.SamplesPerSecond then
 		i += 1
@@ -518,6 +548,13 @@ local function WriteTimerStatsToBuffer(
 		buf[i] = `    Memory:   {FormatMemory(stats.MemoryDelta)} total delta`
 	end
 
+	-- Collect sorted percentile keys for reuse
+	local pKeys: { number } = {}
+	for p in stats.Percentiles do
+		table.insert(pKeys, p)
+	end
+	table.sort(pKeys)
+
 	-- Frame budget analysis
 	i += 1
 	buf[i] = "    -- Frame Budget (60 FPS) --"
@@ -529,6 +566,14 @@ local function WriteTimerStatsToBuffer(
 		"Max:",
 		FormatBudgetPercent(stats.Max)
 	)
+	if #pKeys > 0 then
+		local budgetParts: { string } = {}
+		for _, p in pKeys do
+			table.insert(budgetParts, string.format("p%g: %s", p, FormatBudgetPercent(stats.Percentiles[p])))
+		end
+		i += 1
+		buf[i] = "    " .. table.concat(budgetParts, "   ")
+	end
 
 	-- Calls per frame
 	i += 1
@@ -543,13 +588,16 @@ local function WriteTimerStatsToBuffer(
 		"From Max:",
 		FormatCallsPerFrame(stats.Max)
 	)
+	if #pKeys > 0 then
+		local cfParts: { string } = {}
+		for _, p in pKeys do
+			table.insert(cfParts, string.format("p%g: %s", p, FormatCallsPerFrame(stats.Percentiles[p])))
+		end
+		i += 1
+		buf[i] = "    " .. table.concat(cfParts, "   ")
+	end
 
 	-- Percentiles
-	local pKeys: { number } = {}
-	for p in stats.Percentiles do
-		table.insert(pKeys, p)
-	end
-	table.sort(pKeys)
 	if #pKeys > 0 then
 		i += 1
 		buf[i] = "    -- Percentiles --"
@@ -1601,6 +1649,7 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 	local max = times[count]
 	local p95 = CalculatePercentile(times, count, 95)
 	local p99 = CalculatePercentile(times, count, 99)
+	local p99_9 = CalculatePercentile(times, count, 99.9)
 
 	-- Std dev (Bessel-corrected)
 	local sumSqDiff = 0
@@ -1609,6 +1658,8 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 		sumSqDiff += diff * diff
 	end
 	local stdDev = if count > 1 then math.sqrt(sumSqDiff / (count - 1)) else 0
+	local jitter = max - min
+	local coV = if average > 0 then stdDev / average else 0
 
 	-- Buffered output
 	local buf: { string } = {}
@@ -1624,7 +1675,13 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 	i += 1
 	buf[i] = string.format("    %-14s%d", "Iterations:", count)
 	i += 1
-	buf[i] = string.format("    %-14s%sms", "Total:", string.format("%.4f", total * 1000))
+	buf[i] = string.format(
+		"    %-14s%s  (%s, %s/frame)",
+		"Total:",
+		string.format("%.4fms", total * 1000),
+		FormatBudgetPercent(total),
+		FormatCallsPerFrame(total)
+	)
 	i += 1
 	buf[i] = string.format("    %-14s%sms", "Average:", string.format("%.6f", average * 1000))
 	i += 1
@@ -1636,15 +1693,38 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 	i += 1
 	buf[i] = string.format("    %-14s%sms", "Std Dev:", string.format("%.6f", stdDev * 1000))
 	i += 1
+	buf[i] = string.format(
+		"    %-14s%-20s%-14s%s",
+		"Jitter:",
+		string.format("%.6fms", jitter * 1000),
+		"CoV:",
+		string.format("%.2f%%", coV * 100)
+	)
+	i += 1
 	buf[i] = string.format("    %-14s%sms", "p95:", string.format("%.6f", p95 * 1000))
 	i += 1
 	buf[i] = string.format("    %-14s%sms", "p99:", string.format("%.6f", p99 * 1000))
 	i += 1
+	buf[i] = string.format("    %-14s%sms", "p99.9:", string.format("%.6f", p99_9 * 1000))
+	i += 1
 	buf[i] = "    -- Frame Budget (60 FPS) --"
 	i += 1
-	buf[i] = string.format("    %-14s%s", "Avg Budget:", FormatBudgetPercent(average))
+	buf[i] = string.format(
+		"    %-14s%-20s%-14s%s",
+		"Avg Budget:",
+		FormatBudgetPercent(average),
+		"Max Budget:",
+		FormatBudgetPercent(max)
+	)
 	i += 1
-	buf[i] = string.format("    %-14s%s", "Max Budget:", FormatBudgetPercent(max))
+	buf[i] = string.format(
+		"    p50: %-13sp90: %-13sp95: %-13sp99: %-13sp99.9: %s",
+		FormatBudgetPercent(median),
+		FormatBudgetPercent(CalculatePercentile(times, count, 90)),
+		FormatBudgetPercent(p95),
+		FormatBudgetPercent(p99),
+		FormatBudgetPercent(p99_9)
+	)
 	i += 1
 	buf[i] = "    -- Calls/Frame (60 FPS) --"
 	i += 1
@@ -1654,6 +1734,15 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 		FormatCallsPerFrame(min),
 		"From Avg:",
 		FormatCallsPerFrame(average)
+	)
+	i += 1
+	buf[i] = string.format(
+		"    p50: %-13sp90: %-13sp95: %-13sp99: %-13sp99.9: %s",
+		FormatCallsPerFrame(median),
+		FormatCallsPerFrame(CalculatePercentile(times, count, 90)),
+		FormatCallsPerFrame(p95),
+		FormatCallsPerFrame(p99),
+		FormatCallsPerFrame(p99_9)
 	)
 	i += 1
 	buf[i] = SEPARATOR
@@ -1670,8 +1759,11 @@ function DiagnosticHelper.QuickBenchmark(name: string, fn: () -> (), iterations:
 		Min = min,
 		Max = max,
 		StdDev = stdDev,
+		Jitter = jitter,
+		CoV = coV,
 		P95 = p95,
 		P99 = p99,
+		P99_9 = p99_9,
 	}
 end
 
