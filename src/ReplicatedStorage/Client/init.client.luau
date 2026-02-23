@@ -1,4 +1,7 @@
 --!strict
+do
+	return
+end
 -- Test code
 for t = 3, 1, -1 do
 	print(t)
@@ -10,7 +13,7 @@ local DebugHelper = require(ReplicatedStorage.Shared.Helpers.DebugHelper)
 local DiagnosticHelper = require(ReplicatedStorage.Shared.Helpers.DiagnosticHelper)
 local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
 
-local CHUNK_SIZE = 256
+local CHUNK_SIZE = 128
 local planetGrid = Infinigrid.new(Vector3.zero, Vector3.one * 4224, CHUNK_SIZE)
 print(planetGrid)
 
@@ -23,8 +26,12 @@ DebugHelper.Box(
 	Vector3.one * CHUNK_SIZE,
 	{ Color = debugBoxColorScheme[2] :: any }
 )
-
-print(planetGrid.GenerationOrigin, planetGrid:ChunkIndexToGridPosition(1), planetGrid:ChunkIndexToGridPosition(2))
+print("ChunkIndex:", 0)
+print("GridPosition:", planetGrid:ChunkIndexToGridPosition(0))
+print("WorldPosition:", planetGrid:GridPositionToWorldPosition(planetGrid:ChunkIndexToGridPosition(0)))
+print("ChunkIndex:", 1)
+print("GridPosition:", planetGrid:ChunkIndexToGridPosition(1))
+print("WorldPosition:", planetGrid:GridPositionToWorldPosition(planetGrid:ChunkIndexToGridPosition(1)))
 
 local character = Players.LocalPlayer.Character :: Model
 local diag = DiagnosticHelper.new("Infinigrid")
@@ -32,7 +39,7 @@ while true do
 	task.wait()
 	local chunkIndex = planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position)
 	local worldSpaceCenter = planetGrid:GridPositionToWorldPosition(planetGrid:ChunkIndexToGridPosition(chunkIndex))
-	print(chunkIndex, worldSpaceCenter)
+	print(chunkIndex, planetGrid:ChunkIndexToGridPosition(chunkIndex), worldSpaceCenter)
 	DebugHelper.Box(
 		CFrame.new(worldSpaceCenter),
 		Vector3.one * CHUNK_SIZE,

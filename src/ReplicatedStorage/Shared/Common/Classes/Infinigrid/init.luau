@@ -2,44 +2,43 @@
 	An infinite grid system that generates axis-aligned chunks.
 	The resolution is hardcoded to be 4x4x4 which obeys the Roblox terrain system.
 
-	Note: Need to have deloading capabilities for when memory gets high (on the server but also on the client)
+	TODO: Need to have deloading capabilities for when memory gets high (on the server but also on the client)
 	-- Maybe chunks can go into a "low memory" mode if they havent been visited in a while
-	Note: should have a method to serialize and a constructor to do fromSerial. That way it can be easily saved and loaded, and also sent over remotes if needed? I should only be sending patches anyway, but it'd be useful for syncing on join so yeah i guess
-	Note: Perhaps this low memory mode is a serialized version in a buffer or something? ANd this is added to a bigger buffer that has asleep chunks? We would need a lookup buffer hmmm, most likely not worth
-	Note: have viewer able to actually edit the spawnable data real-time with its edit functionality
+	TODO: should have a method to serialize and a constructor to do fromSerial. That way it can be easily saved and loaded, and also sent over remotes if needed? I should only be sending patches anyway, but it'd be useful for syncing on join so yeah i guess
+	TODO: Perhaps this low memory mode is a serialized version in a buffer or something? ANd this is added to a bigger buffer that has asleep chunks? We would need a lookup buffer hmmm, most likely not worth
+	TODO: have viewer able to actually edit the spawnable data real-time with its edit functionality
 
 	TODO WHEN BACK: VERIFY CORRECTNESS OF CURRENT METHODS AND GENERATION BY FILLING OUT THE DEBUGGER TO VISUALIZE CHUNKS (see if Highlight instance will work with BlockMesh scale)
 --]]
 
 --!strict
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Signal = require(ReplicatedStorage.Packages.Signal)
 --- Services ---
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
 export type BaseChunkState<ChunkState> = {
 	Grid: Grid<ChunkState>, -- Reference to the parent grid of this chunk.
 	ChunkIndex: number, -- The index of the chunk in the grid. Calculated as (x + y * gridSizeX + z * gridSizeX * gridSizeY).
-	ChunkPosition: Vector3, -- Position in grid, in grid space.
 
 	-- TODO: For ChunkState (future type note: this may different from client to server, so I need to handle that gracefully somehow; probably just using the new type passing with `fn<<TypeHere>>(...)`)
 	-- A buffer that only exists if the chunk is in low memory mode.
-	Serial: buffer?,
+	-- Serial: buffer?,
 
 	-- A patch serial that is applied to the chunk to put it in parity with loaded chunks.
 	-- This patch is what is necessary to transform the current chunk into the chunk at its last save state.
-	PatchSerial: buffer?,
+	-- PatchSerial: buffer?,
 
 	-- Whether the chunk is currently rendered or not.
 	-- For the client, this means if anything related to spawned items such as ores, dropped items, etc.
 	-- For the server, this means the physical terrain is being rendered or not. This can happen if this chunk has been unvisited for a while, or if it's just not visible because it's underneath another chunk.
-	IsRendered: boolean,
+	-- IsRendered: boolean,
 
 	-- NOTE/TODO: terrain chunks (and in general chunks) will be efficiently rendered, for example, if it's not "exposed to air" then there is no use in ever rendering it since it cannot be seen
 	--- I also need an efficient way to determine how much a player can see so i can decide how many chunks to render so everything is actually in view, like it would be in real life (again, i need an efficient way to use items from a different part in chunks to pop into view your view. Technically, chunks do not need their items unless they are in view, so maybe an InView field?)
-	InView: boolean, -- Maybe add this; refer to above "---" line
+	-- InView: boolean, -- Maybe add this; refer to above "---" line
 
 	-- TODO: implement system that will instantly and efficiently recycle existing exposed items as you rotate your camera, so if something goes out of view but can be used just in a different part of the view, then use that item (make sure to benchmark this and everything)
 }
@@ -71,7 +70,7 @@ export type Grid<ChunkState> = typeof(setmetatable(
 		Chunks: { [number]: BaseChunkState<ChunkState> }, -- Table of chunks (can have holes) indexed by their chunk index. Chunks are stored in XYZ order exactly like terrain.
 		_zeroBasedGridSize: Vector3, -- Equal to GridSize - Vector3.one. Used for bounds checking when clamping chunk indices.
 
-		OnChunkGenerated: Signal.Signal<BaseChunkState<ChunkState>>, -- Event that fires when a chunk is generated. Provides the chunk's state.
+		OnChunkGenerated: Signal.Signal<BaseChunkState<ChunkState>>,
 	},
 	Grid
 ))

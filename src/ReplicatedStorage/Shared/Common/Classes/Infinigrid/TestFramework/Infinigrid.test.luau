@@ -20,7 +20,7 @@ local Litmus = require(ReplicatedStorage.Shared.Litmus)
 
 --- Variables ---
 local DEFAULT_CHUNK_SIZE = 64
-local DEFAULT_MAX_GRID_SIZE = Vector3.one * ((2 ^ 16) - 1)
+local DEFAULT_MAX_GRID_SIZE = Vector3.one * (2 ^ 14)
 
 --- Infinigrid Tests ---
 return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, afterEach, skip)
@@ -104,19 +104,21 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 		end)
 
 		describe("generation origin", function()
-			it("should compute GenerationOrigin as center - worldSize/2", function()
+			it("should compute GenerationOrigin as center - worldSize/2 + chunkSize/2", function()
 				local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
-				expect(grid.GenerationOrigin).To.Equal(grid.Center - (grid.GridWorldSize / 2))
+				expect(grid.GenerationOrigin).To.Equal(
+					grid.Center - (grid.GridWorldSize / 2) + (Vector3.one * (grid.ChunkSize / 2))
+				)
 			end)
 
-			it("should place GenerationOrigin at -worldSize/2 when center is zero", function()
+			it("should place GenerationOrigin at -worldSize/2 + chunkSize/2 when center is zero", function()
 				local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-				expect(grid.GenerationOrigin).To.Equal(Vector3.new(-32, -32, -32))
+				expect(grid.GenerationOrigin).To.Equal(Vector3.new(-28, -28, -28))
 			end)
 
 			it("should compute GenerationOrigin with negative center", function()
 				local grid = Grid.new(Vector3.new(-100, -100, -100), Vector3.new(64, 64, 64), 8)
-				expect(grid.GenerationOrigin).To.Equal(Vector3.new(-132, -132, -132))
+				expect(grid.GenerationOrigin).To.Equal(Vector3.new(-128, -128, -128))
 			end)
 		end)
 
@@ -491,7 +493,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should handle negative offset grid with correct world positions", function()
 			local grid = Grid.new(Vector3.new(-64, -64, -64), Vector3.new(128, 128, 128), 16)
-			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-128, -128, -128))
+			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-120, -120, -120))
 			expect(grid:GridPositionToWorldPosition(Vector3.zero)).To.Equal(grid.GenerationOrigin)
 		end)
 
@@ -512,7 +514,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(grid.GridPositionToChunkIndex).To.Exist()
 			expect(grid.ChunkIndexToGridPosition).To.Exist()
 			expect(grid.GridPositionToWorldPosition).To.Exist()
-			expect(grid.GetChunkAtPosition).To.Exist()
+			expect(grid.GetNearestChunkAtPosition).To.Exist()
+			expect(grid.OnChunkGenerated).To.Exist()
 		end)
 
 		it("should have Grid as its __index metatable", function()
@@ -545,7 +548,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should satisfy GenerationOrigin == Center - GridWorldSize / 2", function()
+		it("should satisfy GenerationOrigin == Center - GridWorldSize / 2 + ChunkSize / 2", function()
 			local configs = {
 				{ Vector3.zero, Vector3.new(64, 64, 64), 8 },
 				{ Vector3.new(100, 100, 100), Vector3.new(256, 256, 256), 16 },
@@ -554,7 +557,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			}
 			for _, cfg in configs do
 				local grid = Grid.new(cfg[1] :: Vector3, cfg[2] :: Vector3, cfg[3] :: number)
-				expect(grid.GenerationOrigin).To.Equal(grid.Center - (grid.GridWorldSize / 2))
+				expect(grid.GenerationOrigin).To.Equal(
+					grid.Center - (grid.GridWorldSize / 2) + (Vector3.one * (grid.ChunkSize / 2))
+				)
 			end
 		end)
 
@@ -660,12 +665,12 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(neighborZ - origin).To.Equal(Vector3.new(0, 0, cs))
 		end)
 
-		it("should map the center grid position near the constructor center", function()
+		it("should place the midpoint of first and last chunk world positions at Center", function()
 			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
-			local gs = grid.GridSize
-			local midGridPos = Vector3.new(gs.X / 2, gs.Y / 2, gs.Z / 2)
-			local midWorldPos = grid:GridPositionToWorldPosition(midGridPos)
-			expect(midWorldPos).To.Equal(grid.Center)
+			local firstPos = grid:GridPositionToWorldPosition(Vector3.zero)
+			local lastPos = grid:GridPositionToWorldPosition(grid.GridSize - Vector3.one)
+			local midpoint = (firstPos + lastPos) / 2
+			expect(midpoint).To.Equal(grid.Center)
 		end)
 
 		it("should span exactly GridWorldSize from first to last cell edge", function()
@@ -836,19 +841,19 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 	end)
 
 	-- ================================================================
-	-- GetChunkAtPosition (exact corner queries)
+	-- GetNearestChunkAtPosition (exact corner queries)
 	-- ================================================================
-	describe("GetChunkAtPosition", function()
+	describe("GetNearestChunkAtPosition", function()
 		it("should return nil when no chunk exists at the position", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			expect(grid:GetChunkAtPosition(Vector3.new(4, 4, 4))).To.BeNil()
+			expect(grid:GetNearestChunkAtPosition(Vector3.new(4, 4, 4))).To.BeNil()
 		end)
 
 		it("should return a stored chunk at the origin grid position", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 			local chunk = { ChunkIndex = 0, ChunkPosition = Vector3.zero, Data = "test" }
 			grid.Chunks[0] = chunk :: any
-			local result = grid:GetChunkAtPosition(grid.GenerationOrigin)
+			local result = grid:GetNearestChunkAtPosition(grid.GenerationOrigin)
 			expect(result).To.Exist()
 			expect((result :: any).Data).To.Equal("test")
 		end)
@@ -859,7 +864,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos, Value = 42 } :: any
-			local result = grid:GetChunkAtPosition(worldPos)
+			local result = grid:GetNearestChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).Value).To.Equal(42)
 		end)
@@ -870,7 +875,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
-			local result = grid:GetChunkAtPosition(worldPos)
+			local result = grid:GetNearestChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -881,7 +886,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
-			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(1, 1, 1))
+			local result = grid:GetNearestChunkAtPosition(worldPos + Vector3.new(1, 1, 1))
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -890,7 +895,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 			grid.Chunks[0] = { ChunkIndex = 0, ChunkPosition = Vector3.zero } :: any
 			local farWorldPos = grid:GridPositionToWorldPosition(Vector3.new(7, 7, 7))
-			expect(grid:GetChunkAtPosition(farWorldPos)).To.BeNil()
+			expect(grid:GetNearestChunkAtPosition(farWorldPos)).To.BeNil()
 		end)
 
 		it("should work correctly with a non-zero center grid", function()
@@ -899,7 +904,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
-			local result = grid:GetChunkAtPosition(worldPos)
+			local result = grid:GetNearestChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -910,7 +915,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
-			local result = grid:GetChunkAtPosition(worldPos)
+			local result = grid:GetNearestChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -921,7 +926,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
-			local result = grid:GetChunkAtPosition(worldPos)
+			local result = grid:GetNearestChunkAtPosition(worldPos)
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -940,7 +945,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 			for _, gridPos in testPositions do
 				local worldPos = grid:GridPositionToWorldPosition(gridPos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkPosition).To.Equal(gridPos)
 			end
@@ -948,9 +953,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 	end)
 
 	-- ================================================================
-	-- GetChunkAtPosition — Exhaustive
+	-- GetNearestChunkAtPosition — Exhaustive
 	-- ================================================================
-	describe("GetChunkAtPosition exhaustive", function()
+	describe("GetNearestChunkAtPosition exhaustive", function()
 		it("should find all chunks in a fully populated 2x2x2 grid", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(16, 16, 16), 8)
 			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
@@ -961,7 +966,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -977,7 +982,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -993,7 +998,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1009,7 +1014,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1025,7 +1030,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1041,7 +1046,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1058,7 +1063,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for _, i in testIndices do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1074,7 +1079,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1086,8 +1091,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "A" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "B" } :: any
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("A")
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("B")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("A")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("B")
 		end)
 
 		it("should correctly distinguish adjacent chunks along Y", function()
@@ -1096,8 +1101,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "Y0" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "Y1" } :: any
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Y0")
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Y1")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Y0")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Y1")
 		end)
 
 		it("should correctly distinguish adjacent chunks along Z", function()
@@ -1106,8 +1111,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local indexA, indexB = grid:GridPositionToChunkIndex(posA), grid:GridPositionToChunkIndex(posB)
 			grid.Chunks[indexA] = { ChunkIndex = indexA, ChunkPosition = posA, Tag = "Z0" } :: any
 			grid.Chunks[indexB] = { ChunkIndex = indexB, ChunkPosition = posB, Tag = "Z1" } :: any
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Z0")
-			expect((grid:GetChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Z1")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posA)) :: any).Tag).To.Equal("Z0")
+			expect((grid:GetNearestChunkAtPosition(grid:GridPositionToWorldPosition(posB)) :: any).Tag).To.Equal("Z1")
 		end)
 
 		it("should return the same chunk on repeated queries", function()
@@ -1116,9 +1121,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
-			local first = grid:GetChunkAtPosition(worldPos)
-			local second = grid:GetChunkAtPosition(worldPos)
-			local third = grid:GetChunkAtPosition(worldPos)
+			local first = grid:GetNearestChunkAtPosition(worldPos)
+			local second = grid:GetNearestChunkAtPosition(worldPos)
+			local third = grid:GetNearestChunkAtPosition(worldPos)
 			expect(first).To.Exist()
 			expect(first).To.Equal(second)
 			expect(second).To.Equal(third)
@@ -1134,7 +1139,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1150,7 +1155,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1166,7 +1171,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1180,13 +1185,13 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 		it("should construct with large positive center", function()
 			local grid = Grid.new(Vector3.new(10000, 10000, 10000), Vector3.new(64, 64, 64), 8)
 			expect(grid.Center).To.Equal(Vector3.new(10000, 10000, 10000))
-			expect(grid.GenerationOrigin).To.Equal(Vector3.new(10000 - 32, 10000 - 32, 10000 - 32))
+			expect(grid.GenerationOrigin).To.Equal(Vector3.new(9972, 9972, 9972))
 		end)
 
 		it("should construct with large negative center", function()
 			local grid = Grid.new(Vector3.new(-10000, -10000, -10000), Vector3.new(64, 64, 64), 8)
 			expect(grid.Center).To.Equal(Vector3.new(-10000, -10000, -10000))
-			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-10032, -10032, -10032))
+			expect(grid.GenerationOrigin).To.Equal(Vector3.new(-10028, -10028, -10028))
 		end)
 
 		it("should round-trip correctly with large grid at offset center", function()
@@ -1231,7 +1236,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should resolve every GridPositionToWorldPosition through GetChunkAtPosition", function()
+		it("should resolve every GridPositionToWorldPosition through GetNearestChunkAtPosition", function()
 			local grid = Grid.new(Vector3.new(50, 50, 50), Vector3.new(64, 64, 64), 8)
 			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
 			for i = 0, total - 1 do
@@ -1241,7 +1246,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local gridPos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(gridPos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1259,7 +1264,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should have GetChunkAtPosition agree across multiple center configurations", function()
+		it("should have GetNearestChunkAtPosition agree across multiple center configurations", function()
 			local centers = { Vector3.zero, Vector3.new(100, -50, 300), Vector3.new(-1000, -1000, -1000) }
 			for _, center in centers do
 				local grid = Grid.new(center, Vector3.new(32, 32, 32), 8)
@@ -1271,7 +1276,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 				for i = 0, total - 1 do
 					local gridPos = grid:ChunkIndexToGridPosition(i)
 					local worldPos = grid:GridPositionToWorldPosition(gridPos)
-					local result = grid:GetChunkAtPosition(worldPos)
+					local result = grid:GetNearestChunkAtPosition(worldPos)
 					expect(result).To.Exist()
 					expect((result :: any).ChunkIndex).To.Equal(i)
 				end
@@ -1314,7 +1319,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should be symmetric about Center with GridWorldSize", function()
+		it("should be symmetric about Center with first and last chunk positions", function()
 			local configs = {
 				{ Vector3.zero, Vector3.new(64, 64, 64), 8 },
 				{ Vector3.new(500, 500, 500), Vector3.new(128, 128, 128), 16 },
@@ -1322,8 +1327,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			}
 			for _, cfg in configs do
 				local grid = Grid.new(cfg[1] :: Vector3, cfg[2] :: Vector3, cfg[3] :: number)
-				local endCorner = grid.GenerationOrigin + grid.GridWorldSize
-				local midpoint = (grid.GenerationOrigin + endCorner) / 2
+				local firstChunkWorldPos = grid.GenerationOrigin
+				local lastChunkWorldPos = grid:GridPositionToWorldPosition(grid.GridSize - Vector3.one)
+				local midpoint = (firstChunkWorldPos + lastChunkWorldPos) / 2
 				expect(midpoint).To.Equal(grid.Center)
 			end
 		end)
@@ -1367,7 +1373,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should store and retrieve corner chunks via GetChunkAtPosition", function()
+		it("should store and retrieve corner chunks via GetNearestChunkAtPosition", function()
 			local grid = Grid.new(Vector3.new(100, 100, 100), Vector3.new(64, 64, 64), 8)
 			local gs = grid.GridSize
 			local corners = {
@@ -1383,7 +1389,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 			for _, corner in corners do
 				local worldPos = grid:GridPositionToWorldPosition(corner)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkPosition).To.Equal(corner)
 			end
@@ -1458,7 +1464,6 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 				local grid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), cs)
 				expect(grid.ChunkSize).To.BeGreaterThan(0)
 				expect(grid.ChunkSize % 8).To.Equal(0)
-				expect(grid.GridSize * grid.ChunkSize).To.Equal(grid.GridWorldSize)
 			end
 		end)
 
@@ -1489,7 +1494,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for _, cfg in testCases do
 				local grid = Grid.new(cfg[1] :: Vector3, cfg[2] :: Vector3, cfg[3] :: number)
 				expect(grid.GridSize * grid.ChunkSize).To.Equal(grid.GridWorldSize)
-				expect(grid.GenerationOrigin).To.Equal(grid.Center - grid.GridWorldSize / 2)
+				expect(grid.GenerationOrigin).To.Equal(
+					grid.Center - grid.GridWorldSize / 2 + Vector3.one * (grid.ChunkSize / 2)
+				)
 				expect(grid.ChunkSize % 8).To.Equal(0)
 				expect(grid.Center.X % 4).To.Equal(0)
 				expect(grid.Center.Y % 4).To.Equal(0)
@@ -1662,7 +1669,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			end
 		end)
 
-		it("should produce identical GetChunkAtPosition results across instances", function()
+		it("should produce identical GetNearestChunkAtPosition results across instances", function()
 			local center = Vector3.new(100, -200, 300)
 			local worldSize = Vector3.new(32, 32, 32)
 			for _ = 1, 3 do
@@ -1675,7 +1682,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 				for i = 0, total - 1 do
 					local gridPos = grid:ChunkIndexToGridPosition(i)
 					local worldPos = grid:GridPositionToWorldPosition(gridPos)
-					local result = grid:GetChunkAtPosition(worldPos)
+					local result = grid:GetNearestChunkAtPosition(worldPos)
 					expect(result).To.Exist()
 					expect((result :: any).ChunkIndex).To.Equal(i)
 				end
@@ -1687,7 +1694,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 	-- RoundVectorToGrid Precision (Bug-catching)
 	-- Tests that the internal RoundVectorToGrid function rounds
 	-- correctly to the 4-stud terrain grid. Since it's called
-	-- internally by GetChunkAtPosition, these tests exercise it
+	-- internally by GetNearestChunkAtPosition, these tests exercise it
 	-- indirectly by checking chunk lookups at various positions.
 	-- ================================================================
 	describe("RoundVectorToGrid precision", function()
@@ -1698,7 +1705,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local worldPos = grid:GridPositionToWorldPosition(gridPos)
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			-- math.round(1/4)*4 = 0 -> same as corner (0,0,0 relative shift).
-			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(1, 0, 0))
+			local result = grid:GetNearestChunkAtPosition(worldPos + Vector3.new(1, 0, 0))
 			expect(result).To.Exist()
 			expect((result :: any).ChunkIndex).To.Equal(chunkIndex)
 		end)
@@ -1711,7 +1718,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
 			-- math.round(2/4)*4 = math.round(0.5)*4; Luau rounds 0.5 to 1 -> snap to 4.
 			-- worldPos+4 should ideally still resolve or the next chunk. This test documents behavior.
-			local result = grid:GetChunkAtPosition(worldPos + Vector3.new(2, 0, 0))
+			local result = grid:GetNearestChunkAtPosition(worldPos + Vector3.new(2, 0, 0))
 			-- The rounding of 2 studs is implementation-dependent; we just verify no crash.
 			expect(true).To.Equal(true)
 		end)
@@ -1766,7 +1773,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should correctly compute origin for asymmetric negative center", function()
 			local grid = Grid.new(Vector3.new(-7, -13, -21), Vector3.new(64, 64, 64), 8)
-			expect(grid.GenerationOrigin).To.Equal(grid.Center - grid.GridWorldSize / 2)
+			expect(grid.GenerationOrigin).To.Equal(
+				grid.Center - grid.GridWorldSize / 2 + Vector3.one * (grid.ChunkSize / 2)
+			)
 		end)
 
 		it("should round-trip chunks with negative center grid", function()
@@ -1779,7 +1788,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			for i = 0, total - 1 do
 				local pos = grid:ChunkIndexToGridPosition(i)
 				local worldPos = grid:GridPositionToWorldPosition(pos)
-				local result = grid:GetChunkAtPosition(worldPos)
+				local result = grid:GetNearestChunkAtPosition(worldPos)
 				expect(result).To.Exist()
 				expect((result :: any).ChunkIndex).To.Equal(i)
 			end
@@ -1798,6 +1807,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(grid.GridSize).To.BeA("Vector3")
 			expect(grid.GridWorldSize).To.BeA("Vector3")
 			expect(grid.Chunks).To.BeA("table")
+			expect(grid.OnChunkGenerated).To.Exist()
 		end)
 
 		it("should return a number from GridPositionToChunkIndex", function()
@@ -1819,9 +1829,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(wp).To.BeA("Vector3")
 		end)
 
-		it("should return nil or a table from GetChunkAtPosition", function()
+		it("should return nil or a table from GetNearestChunkAtPosition", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local result = grid:GetChunkAtPosition(Vector3.zero)
+			local result = grid:GetNearestChunkAtPosition(Vector3.zero)
 			expect(result == nil or typeof(result) == "table").To.Equal(true)
 		end)
 	end)

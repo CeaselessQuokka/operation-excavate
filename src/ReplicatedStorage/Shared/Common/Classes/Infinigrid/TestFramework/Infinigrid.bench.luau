@@ -148,7 +148,7 @@ for _ = 1, ITERATIONS do
 end
 
 -- ============================================================
--- [3] GetChunkAtPosition
+-- [3] GetNearestChunkAtPosition
 -- Measures world-position-to-chunk lookup, which internally
 -- rounds the position to the terrain grid and performs a hash
 -- table lookup. Tested under hit (chunk exists), miss (empty
@@ -158,7 +158,7 @@ end
 -- ============================================================
 
 print("")
-print("  [3] GetChunkAtPosition")
+print("  [3] GetNearestChunkAtPosition")
 print("  Measures chunk lookup from world coordinates.")
 print("----------------------------------------------------------------------")
 
@@ -172,21 +172,21 @@ do
 
 	for _ = 1, ITERATIONS do
 		diag:StartTimer("ChunkLookup — 8³, cache hit")
-		lookupGrid:GetChunkAtPosition(queryWorldPos)
+		lookupGrid:GetNearestChunkAtPosition(queryWorldPos)
 		diag:StopTimer("ChunkLookup — 8³, cache hit")
 	end
 
 	local emptyGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 	for _ = 1, ITERATIONS do
 		diag:StartTimer("ChunkLookup — 8³, cache miss")
-		emptyGrid:GetChunkAtPosition(queryWorldPos)
+		emptyGrid:GetNearestChunkAtPosition(queryWorldPos)
 		diag:StopTimer("ChunkLookup — 8³, cache miss")
 	end
 
 	local offsetPos = queryWorldPos + Vector3.new(1, 1, 1)
 	for _ = 1, ITERATIONS do
 		diag:StartTimer("ChunkLookup — 8³, 1-stud offset")
-		lookupGrid:GetChunkAtPosition(offsetPos)
+		lookupGrid:GetNearestChunkAtPosition(offsetPos)
 		diag:StopTimer("ChunkLookup — 8³, 1-stud offset")
 	end
 end
@@ -201,7 +201,7 @@ do
 
 	for _ = 1, ITERATIONS do
 		diag:StartTimer("ChunkLookup — 8³, non-zero center")
-		offsetGrid:GetChunkAtPosition(offsetQueryPos)
+		offsetGrid:GetNearestChunkAtPosition(offsetQueryPos)
 		diag:StopTimer("ChunkLookup — 8³, non-zero center")
 	end
 end
@@ -216,7 +216,7 @@ do
 
 	for _ = 1, ITERATIONS do
 		diag:StartTimer("ChunkLookup — 64³, cache hit")
-		bigLookupGrid:GetChunkAtPosition(bigQueryPos)
+		bigLookupGrid:GetNearestChunkAtPosition(bigQueryPos)
 		diag:StopTimer("ChunkLookup — 64³, cache hit")
 	end
 end
@@ -282,13 +282,13 @@ do
 	end
 
 	for _ = 1, BULK_ITERATIONS do
-		diag:StartTimer("Bulk — GetChunkAtPosition ×512 (8³)")
+		diag:StartTimer("Bulk — GetNearestChunkAtPosition ×512 (8³)")
 		for i = 0, 511 do
 			local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
 			local worldPos = bulkLookupGrid:GridPositionToWorldPosition(pos)
-			bulkLookupGrid:GetChunkAtPosition(worldPos)
+			bulkLookupGrid:GetNearestChunkAtPosition(worldPos)
 		end
-		diag:StopTimer("Bulk — GetChunkAtPosition ×512 (8³)")
+		diag:StopTimer("Bulk — GetNearestChunkAtPosition ×512 (8³)")
 	end
 end
 
