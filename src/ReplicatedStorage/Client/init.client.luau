@@ -1,4 +1,7 @@
 --!strict
+-- do
+-- 	return
+-- end
 -- Test code
 for t = 3, 1, -1 do
 	print(t)
@@ -11,7 +14,7 @@ local DiagnosticHelper = require(ReplicatedStorage.Shared.Helpers.DiagnosticHelp
 local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
 
 local CHUNK_SIZE = 64
-local planetGrid = Infinigrid.new(Vector3.zero, Vector3.one * 4224, CHUNK_SIZE)
+local planetGrid = Infinigrid.new(Vector3.zero, Vector3.one * 8296 * 2, CHUNK_SIZE)
 print(planetGrid)
 
 local debugBoxColorScheme = DebugHelper.GetColorScheme()

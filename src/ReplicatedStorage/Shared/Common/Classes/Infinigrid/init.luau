@@ -40,6 +40,9 @@ export type BaseChunkState<ChunkState> = {
 	--- I also need an efficient way to determine how much a player can see so i can decide how many chunks to render so everything is actually in view, like it would be in real life (again, i need an efficient way to use items from a different part in chunks to pop into view your view. Technically, chunks do not need their items unless they are in view, so maybe an InView field?)
 	-- InView: boolean, -- Maybe add this; refer to above "---" line
 
+	-- Denotes whether or not this chunk is a surface-level chunk. That means anything that is directly facing the air
+	-- IsSurface: boolean,
+
 	-- TODO: implement system that will instantly and efficiently recycle existing exposed items as you rotate your camera, so if something goes out of view but can be used just in a different part of the view, then use that item (make sure to benchmark this and everything)
 }
 
