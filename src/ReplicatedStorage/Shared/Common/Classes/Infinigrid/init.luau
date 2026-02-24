@@ -7,6 +7,7 @@
 	TODO: should have a method to serialize and a constructor to do fromSerial. That way it can be easily saved and loaded, and also sent over remotes if needed? I should only be sending patches anyway, but it'd be useful for syncing on join so yeah i guess
 	TODO: Perhaps this low memory mode is a serialized version in a buffer or something? ANd this is added to a bigger buffer that has asleep chunks? We would need a lookup buffer hmmm, most likely not worth
 	TODO: have viewer able to actually edit the spawnable data real-time with its edit functionality
+	TODO: different serialization for data store and remotes. Clients will not need the same data the server does. The server should pass correct data to the client so it doesn't have worry about doing it itself
 --]]
 
 --!strict
@@ -14,7 +15,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local DebugHelper = require(ReplicatedStorage.Shared.Helpers.DebugHelper)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
@@ -111,84 +111,57 @@ function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSiz
 	return grid
 end
 
-function Grid.GetNeighboringChunksIndices<ChunkState>(self: Grid<ChunkState>, chunkIndex: ChunkIndex): { ChunkIndex }
-	local maxIndex = self._theoreticalMaxChunkIndex
+function Grid.GetNeighborIndices<ChunkState>(self: Grid<ChunkState>, chunkIndex: ChunkIndex): { ChunkIndex }
+	local neighborIndex = 1
+	local neighboringChunks: { ChunkIndex } = table.create(6) :: any
 	local gridSize = self.GridSize
 	local sizeY, sizeZ = gridSize.Y, gridSize.Z
 	local sizeYZ = sizeY * sizeZ
-	local chunkYCoordinate = (chunkIndex % sizeYZ) // sizeZ
-	local neighborIndex = 1
-	local neighboringChunks: { ChunkIndex } = table.create(6) :: any
-	local leftChunkIndex = chunkIndex - sizeYZ
-	if
-		(leftChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
-		and leftChunkIndex >= 0
-		and leftChunkIndex <= maxIndex
-	then
-		neighboringChunks[neighborIndex] = leftChunkIndex
+	local chunkYCoordinate, chunkZCoordinate = (chunkIndex % sizeYZ) // sizeZ, chunkIndex % sizeZ
+	if chunkIndex >= sizeYZ then -- Left chunk.
+		neighboringChunks[neighborIndex] = chunkIndex - sizeYZ
 		neighborIndex += 1
 	end
-	local rightChunkIndex = chunkIndex + sizeYZ
-	if
-		(rightChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
-		and rightChunkIndex >= 0
-		and rightChunkIndex <= maxIndex
-	then
-		neighboringChunks[neighborIndex] = rightChunkIndex
+	if chunkIndex + sizeYZ <= self._theoreticalMaxChunkIndex then -- Right chunk.
+		neighboringChunks[neighborIndex] = chunkIndex + sizeYZ
 		neighborIndex += 1
 	end
-	local backChunkIndex = chunkIndex - 1
-	if
-		(backChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
-		and backChunkIndex >= 0
-		and backChunkIndex <= maxIndex
-	then
-		neighboringChunks[neighborIndex] = backChunkIndex
+	if chunkZCoordinate > 0 then -- Back chunk.
+		neighboringChunks[neighborIndex] = chunkIndex - 1
 		neighborIndex += 1
 	end
-	local frontChunkIndex = chunkIndex + 1
-	if
-		(frontChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
-		and frontChunkIndex >= 0
-		and frontChunkIndex <= maxIndex
-	then
-		neighboringChunks[neighborIndex] = frontChunkIndex
+	if chunkZCoordinate < sizeZ - 1 then -- Front chunk.
+		neighboringChunks[neighborIndex] = chunkIndex + 1
 		neighborIndex += 1
 	end
-	local bottomChunkIndex = chunkIndex - sizeZ
-	if bottomChunkIndex >= 0 and bottomChunkIndex <= maxIndex then
-		neighboringChunks[neighborIndex] = bottomChunkIndex
+	if chunkYCoordinate > 0 then -- Bottom chunk.
+		neighboringChunks[neighborIndex] = chunkIndex - sizeZ
 		neighborIndex += 1
 	end
-	local topChunkIndex = chunkIndex + sizeZ
-	if topChunkIndex >= 0 and topChunkIndex <= maxIndex then
-		neighboringChunks[neighborIndex] = topChunkIndex
+	if chunkYCoordinate < sizeY - 1 then -- Top chunk.
+		neighboringChunks[neighborIndex] = chunkIndex + sizeZ
 	end
 	return neighboringChunks
 end
 
 function Grid.GetNearestChunkAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): BaseChunkState<ChunkState>?
-	local chunkWorldPosition = position - self.GenerationOrigin
-	local chunkGridPosition = chunkWorldPosition / self.ChunkSize
+	local chunkGridPosition = (position - self.GenerationOrigin) / self.ChunkSize
 	local zeroBasedGridSize = self._zeroBasedGridSize
-	local clampedChunkGridPosition = Vector3.new(
-		math.clamp(math.floor(chunkGridPosition.X + 0.5), 0, zeroBasedGridSize.X),
-		math.clamp(math.floor(chunkGridPosition.Y + 0.5), 0, zeroBasedGridSize.Y),
-		math.clamp(math.floor(chunkGridPosition.Z + 0.5), 0, zeroBasedGridSize.Z)
-	)
-	return self.Chunks[self:GridPositionToChunkIndex(clampedChunkGridPosition)]
+	local sizeZ = self.GridSize.Z
+	local x = math.clamp(math.round(chunkGridPosition.X), 0, zeroBasedGridSize.X)
+	local y = math.clamp(math.round(chunkGridPosition.Y), 0, zeroBasedGridSize.Y)
+	local z = math.clamp(math.round(chunkGridPosition.Z), 0, zeroBasedGridSize.Z)
+	return self.Chunks[(x * self.GridSize.Y * sizeZ) + (y * sizeZ) + z]
 end
 
 function Grid._GetNearestChunkIndexAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): number
-	local chunkWorldPosition = position - self.GenerationOrigin
-	local chunkGridPosition = chunkWorldPosition / self.ChunkSize
+	local chunkGridPosition = (position - self.GenerationOrigin) / self.ChunkSize
 	local zeroBasedGridSize = self._zeroBasedGridSize
-	local clampedChunkGridPosition = Vector3.new(
-		math.clamp(math.floor(chunkGridPosition.X + 0.5), 0, zeroBasedGridSize.X),
-		math.clamp(math.floor(chunkGridPosition.Y + 0.5), 0, zeroBasedGridSize.Y),
-		math.clamp(math.floor(chunkGridPosition.Z + 0.5), 0, zeroBasedGridSize.Z)
-	)
-	return self:GridPositionToChunkIndex(clampedChunkGridPosition)
+	local sizeZ = self.GridSize.Z
+	local x = math.clamp(math.round(chunkGridPosition.X), 0, zeroBasedGridSize.X)
+	local y = math.clamp(math.round(chunkGridPosition.Y), 0, zeroBasedGridSize.Y)
+	local z = math.clamp(math.round(chunkGridPosition.Z), 0, zeroBasedGridSize.Z)
+	return (x * self.GridSize.Y * sizeZ) + (y * sizeZ) + z
 end
 
 function Grid.GridPositionToWorldPosition(self: Grid<any>, gridPosition: Vector3): Vector3

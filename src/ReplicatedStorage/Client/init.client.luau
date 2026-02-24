@@ -37,5 +37,5 @@ while true do
 		Vector3.one * CHUNK_SIZE,
 		{ Reuse = debugBox, Color = debugBoxColorScheme[1] }
 	)
-	planetGrid:GetNeighboringChunksIndices(chunkIndex)
+	planetGrid:GetNeighborIndices(chunkIndex)
 end

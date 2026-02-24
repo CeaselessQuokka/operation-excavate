@@ -21,7 +21,6 @@ local Grid = require(script.Parent.Parent)
 
 --- Variables ---
 local ITERATIONS = 10_000
-local BULK_ITERATIONS = 500
 
 --- Benchmarks ---
 local diag = DiagnosticHelper.new("Infinigrid Benchmark", {
@@ -35,7 +34,6 @@ print("======================================================================")
 print("  INFINIGRID BENCHMARK SUITE")
 print("======================================================================")
 print(`  Iterations per test : {ITERATIONS}`)
-print(`  Bulk iterations     : {BULK_ITERATIONS}`)
 print("======================================================================")
 
 -- ============================================================
@@ -277,7 +275,7 @@ do
 end
 
 -- ============================================================
--- [5] GetNeighboringChunksIndices
+-- [5] GetNeighborIndices
 -- Measures the cost of computing the 6-directional (±X, ±Y,
 -- ±Z) neighbor indices for a given chunk. Internally this
 -- performs modular arithmetic and bounds checking against
@@ -290,7 +288,7 @@ end
 -- ============================================================
 
 print("")
-print("  [5] GetNeighboringChunksIndices — 6-Directional Neighbor Lookup")
+print("  [5] GetNeighborIndices — 6-Directional Neighbor Lookup")
 print("  How fast can we compute the ±X, ±Y, ±Z neighbor indices for a chunk?")
 print("----------------------------------------------------------------------")
 
@@ -298,113 +296,41 @@ do
 	-- Interior chunk: all 6 neighbors valid
 	local interiorIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, interior (6 neighbors)")
-		smallGrid:GetNeighboringChunksIndices(interiorIndex)
-		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, interior (6 neighbors)")
+		diag:StartTimer("GetNeighborIndices — 8³ grid, interior (6 neighbors)")
+		smallGrid:GetNeighborIndices(interiorIndex)
+		diag:StopTimer("GetNeighborIndices — 8³ grid, interior (6 neighbors)")
 	end
 
 	-- Corner chunk at origin: only +X, +Y, +Z valid (3 neighbors)
 	local cornerIndex = smallGrid:GridPositionToChunkIndex(Vector3.zero)
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
-		smallGrid:GetNeighboringChunksIndices(cornerIndex)
-		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
+		diag:StartTimer("GetNeighborIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
+		smallGrid:GetNeighborIndices(cornerIndex)
+		diag:StopTimer("GetNeighborIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
 	end
 
 	-- Edge chunk: some neighbors valid, some not
 	local edgeIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(0, 4, 4))
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, edge chunk (5 neighbors)")
-		smallGrid:GetNeighboringChunksIndices(edgeIndex)
-		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, edge chunk (5 neighbors)")
+		diag:StartTimer("GetNeighborIndices — 8³ grid, edge chunk (5 neighbors)")
+		smallGrid:GetNeighborIndices(edgeIndex)
+		diag:StopTimer("GetNeighborIndices — 8³ grid, edge chunk (5 neighbors)")
 	end
 
 	-- Far corner chunk: (7,7,7) — only -X, -Y, -Z valid (3 neighbors)
 	local farCornerIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(7, 7, 7))
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
-		smallGrid:GetNeighboringChunksIndices(farCornerIndex)
-		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
+		diag:StartTimer("GetNeighborIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
+		smallGrid:GetNeighborIndices(farCornerIndex)
+		diag:StopTimer("GetNeighborIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
 	end
 
 	-- Large grid interior
 	local largeInteriorIndex = largeGrid:GridPositionToChunkIndex(Vector3.new(32, 32, 32))
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("GetNeighboringChunksIndices — 64³ grid, interior (6 neighbors)")
-		largeGrid:GetNeighboringChunksIndices(largeInteriorIndex)
-		diag:StopTimer("GetNeighboringChunksIndices — 64³ grid, interior (6 neighbors)")
-	end
-end
-
--- ============================================================
--- [6] Bulk Operations (512 chunks per pass)
--- Measures throughput of processing all 512 chunks in an 8³
--- grid in a single pass. Each timer captures one complete pass.
--- This simulates real workloads like:
---   • Full-grid iteration during chunk generation sweeps
---   • Spatial queries across all chunks
---   • Neighbor lookups for connectivity checks
--- ============================================================
-
-print("")
-print("  [6] Bulk Operations (512 chunks per pass)")
-print("  Full-sweep throughput: every chunk in an 8³ grid processed per pass.")
-print("----------------------------------------------------------------------")
-
-for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk ×512 — ChunkIndexToGridPosition + GridPositionToChunkIndex round-trip (8³)")
-	for i = 0, 511 do
-		local pos = smallGrid:ChunkIndexToGridPosition(i)
-		smallGrid:GridPositionToChunkIndex(pos)
-	end
-	diag:StopTimer("Bulk ×512 — ChunkIndexToGridPosition + GridPositionToChunkIndex round-trip (8³)")
-end
-
-for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk ×512 — Nested XYZ → GridPositionToChunkIndex (8³)")
-	local gs = smallGrid.GridSize
-	for x = 0, gs.X - 1 do
-		for y = 0, gs.Y - 1 do
-			for z = 0, gs.Z - 1 do
-				smallGrid:GridPositionToChunkIndex(Vector3.new(x, y, z))
-			end
-		end
-	end
-	diag:StopTimer("Bulk ×512 — Nested XYZ → GridPositionToChunkIndex (8³)")
-end
-
-for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk ×512 — ChunkIndex→GridPos→WorldPos full pipeline (8³)")
-	for i = 0, 511 do
-		local pos = smallGrid:ChunkIndexToGridPosition(i)
-		smallGrid:GridPositionToWorldPosition(pos)
-	end
-	diag:StopTimer("Bulk ×512 — ChunkIndex→GridPos→WorldPos full pipeline (8³)")
-end
-
-do
-	local bulkLookupGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-	for i = 0, 511 do
-		local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
-		bulkLookupGrid.Chunks[i] = { ChunkIndex = i, ChunkPosition = pos } :: any
-	end
-
-	for _ = 1, BULK_ITERATIONS do
-		diag:StartTimer("Bulk ×512 — GetNearestChunkAtPosition (Index→GridPos→WorldPos→Lookup) (8³)")
-		for i = 0, 511 do
-			local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
-			local worldPos = bulkLookupGrid:GridPositionToWorldPosition(pos)
-			bulkLookupGrid:GetNearestChunkAtPosition(worldPos)
-		end
-		diag:StopTimer("Bulk ×512 — GetNearestChunkAtPosition (Index→GridPos→WorldPos→Lookup) (8³)")
-	end
-
-	for _ = 1, BULK_ITERATIONS do
-		diag:StartTimer("Bulk ×512 — GetNeighboringChunksIndices for every chunk (8³)")
-		for i = 0, 511 do
-			bulkLookupGrid:GetNeighboringChunksIndices(i)
-		end
-		diag:StopTimer("Bulk ×512 — GetNeighboringChunksIndices for every chunk (8³)")
+		diag:StartTimer("GetNeighborIndices — 64³ grid, interior (6 neighbors)")
+		largeGrid:GetNeighborIndices(largeInteriorIndex)
+		diag:StopTimer("GetNeighborIndices — 64³ grid, interior (6 neighbors)")
 	end
 end
 

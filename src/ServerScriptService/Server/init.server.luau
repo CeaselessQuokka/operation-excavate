@@ -20,13 +20,11 @@ for _, module in servicesFolder:GetChildren() do
 end
 
 --- Start Knit ---
-Knit.Start()
-	:andThen(function()
-		print("[Server] Knit started successfully")
-	end)
-	:catch(function(err)
-		warn(`[Server] Knit failed to start: {err}`)
-	end)
+Knit.Start():expect()
+
+-- do
+-- 	return
+-- end
 
 for t = 3, 1, -1 do
 	print(`[Server] Starting in {t}...`)
@@ -34,8 +32,8 @@ for t = 3, 1, -1 do
 end
 
 -- Run tests.
--- local Litmus = require(ReplicatedStorage.Shared.Litmus)
--- Litmus.RunSuite(require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.test"]))
+local Litmus = require(ReplicatedStorage.Shared.Litmus)
+Litmus.RunSuite(require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.test"]))
 
 -- Run benchmark.
 -- require(ReplicatedStorage.Shared.Common.Classes.Infinigrid.TestFramework["Infinigrid.bench"])

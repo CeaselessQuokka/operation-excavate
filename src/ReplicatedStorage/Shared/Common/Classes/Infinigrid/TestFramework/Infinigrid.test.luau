@@ -515,7 +515,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(grid.ChunkIndexToGridPosition).To.Exist()
 			expect(grid.GridPositionToWorldPosition).To.Exist()
 			expect(grid.GetNearestChunkAtPosition).To.Exist()
-			expect(grid.GetNeighboringChunksIndices).To.Exist()
+			expect(grid.GetNeighborIndices).To.Exist()
 			expect(grid._GetNearestChunkIndexAtPosition).To.Exist()
 			expect(grid.OnChunkGenerated).To.Exist()
 		end)
@@ -1846,9 +1846,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(index % 1).To.Equal(0)
 		end)
 
-		it("should return a table from GetNeighboringChunksIndices", function()
+		it("should return a table from GetNeighborIndices", function()
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-			local neighbors = grid:GetNeighboringChunksIndices(0)
+			local neighbors = grid:GetNeighborIndices(0)
 			expect(neighbors).To.BeA("table")
 		end)
 	end)
@@ -1888,9 +1888,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 	end)
 
 	-- ================================================================
-	-- GetNeighboringChunksIndices
+	-- GetNeighborIndices
 	-- ================================================================
-	describe("GetNeighboringChunksIndices", function()
+	describe("GetNeighborIndices", function()
 		local grid
 
 		beforeEach(function()
@@ -1899,32 +1899,32 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should return 6 neighbors for an interior chunk", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(#neighbors).To.Equal(6)
 		end)
 
 		it("should return 3 neighbors for the origin corner (0,0,0)", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.zero)
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(#neighbors).To.Equal(3)
 		end)
 
 		it("should return 3 neighbors for the far corner (7,7,7)", function()
 			local gs = grid.GridSize
 			local index = grid:GridPositionToChunkIndex(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(#neighbors).To.Equal(3)
 		end)
 
 		it("should return 4 neighbors for an edge chunk (0,0,4)", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.new(0, 0, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(#neighbors).To.Equal(4)
 		end)
 
 		it("should return 5 neighbors for a face chunk (0,4,4)", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.new(0, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(#neighbors).To.Equal(5)
 		end)
 
@@ -1932,7 +1932,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(3, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1940,7 +1940,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(4, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(3, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1948,7 +1948,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(4, 3, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1956,7 +1956,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(4, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 3, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1964,7 +1964,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(4, 4, 3)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1972,7 +1972,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(4, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 3))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
 		end)
 
@@ -1980,7 +1980,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local pos = Vector3.new(0, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
 			local invalidNeighbor = grid:GridPositionToChunkIndex(Vector3.new(-1, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, invalidNeighbor)).To.BeNil()
 		end)
 
@@ -1988,7 +1988,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local gs = grid.GridSize
 			local pos = Vector3.new(gs.X - 1, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			-- The +X neighbor index would exceed _theoreticalMaxChunkIndex or wrap
 			for _, neighbor in neighbors do
 				local neighborPos = grid:ChunkIndexToGridPosition(neighbor)
@@ -2001,7 +2001,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			-- Test several positions including corners and edges
 			local testIndices = { 0, 1, 7, 63, 64, 255, 256, 511 }
 			for _, chunkIndex in testIndices do
-				local neighbors = grid:GetNeighboringChunksIndices(chunkIndex)
+				local neighbors = grid:GetNeighborIndices(chunkIndex)
 				for _, neighbor in neighbors do
 					expect(neighbor).To.BeGreaterThanOrEqual(0)
 					expect(neighbor).To.BeLessThanOrEqual(maxIndex)
@@ -2011,7 +2011,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should return unique indices (no duplicates)", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			local seen: { [number]: boolean } = {}
 			for _, neighbor in neighbors do
 				expect(seen[neighbor]).To.BeNil()
@@ -2021,14 +2021,14 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should not include the chunk itself in its neighbors", function()
 			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			expect(table.find(neighbors, index)).To.BeNil()
 		end)
 
 		it("should produce neighbors that differ by exactly 1 grid step on one axis", function()
 			local pos = Vector3.new(4, 4, 4)
 			local index = grid:GridPositionToChunkIndex(pos)
-			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local neighbors = grid:GetNeighborIndices(index)
 			for _, neighbor in neighbors do
 				local neighborPos = grid:ChunkIndexToGridPosition(neighbor)
 				local diff = neighborPos - pos
@@ -2041,9 +2041,9 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 
 		it("should be symmetric: if A neighbors B, then B neighbors A", function()
 			local indexA = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
-			local neighborsA = grid:GetNeighboringChunksIndices(indexA)
+			local neighborsA = grid:GetNeighborIndices(indexA)
 			for _, neighborIndex in neighborsA do
-				local neighborsB = grid:GetNeighboringChunksIndices(neighborIndex)
+				local neighborsB = grid:GetNeighborIndices(neighborIndex)
 				expect(table.find(neighborsB, indexA)).To.Exist()
 			end
 		end)
@@ -2051,7 +2051,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 		it("should work correctly with a non-cubic grid", function()
 			local ncGrid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8) -- 4x2x8
 			local interiorIndex = ncGrid:GridPositionToChunkIndex(Vector3.new(2, 1, 4))
-			local neighbors = ncGrid:GetNeighboringChunksIndices(interiorIndex)
+			local neighbors = ncGrid:GetNeighborIndices(interiorIndex)
 			-- All returned indices should be valid
 			for _, neighbor in neighbors do
 				expect(neighbor).To.BeGreaterThanOrEqual(0)
@@ -2062,7 +2062,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 		it("should return 0 neighbors for a 1x1x1 grid (single chunk)", function()
 			-- In a 1x1x1 grid there is only 1 chunk; it has no valid neighbors
 			local tinyGrid = Grid.new(Vector3.zero, Vector3.new(8, 8, 8), 8)
-			local neighbors = tinyGrid:GetNeighboringChunksIndices(0)
+			local neighbors = tinyGrid:GetNeighborIndices(0)
 			-- All directional checks should fail bounds
 			expect(#neighbors).To.Equal(0)
 		end)
@@ -2071,7 +2071,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local smallGrid = Grid.new(Vector3.zero, Vector3.new(24, 24, 24), 8) -- 3x3x3
 			local total = smallGrid.GridSize.X * smallGrid.GridSize.Y * smallGrid.GridSize.Z
 			for i = 0, total - 1 do
-				local neighbors = smallGrid:GetNeighboringChunksIndices(i)
+				local neighbors = smallGrid:GetNeighborIndices(i)
 				expect(#neighbors).To.BeGreaterThanOrEqual(0)
 				expect(#neighbors).To.BeLessThanOrEqual(6)
 			end
@@ -2081,7 +2081,7 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local gs = grid.GridSize
 			local total = gs.X * gs.Y * gs.Z
 			for i = 0, total - 1 do
-				local neighbors = grid:GetNeighboringChunksIndices(i)
+				local neighbors = grid:GetNeighborIndices(i)
 				expect(#neighbors).To.BeGreaterThanOrEqual(0)
 				expect(#neighbors).To.BeLessThanOrEqual(6)
 				-- All returned indices must be valid
