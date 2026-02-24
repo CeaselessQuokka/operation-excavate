@@ -1,7 +1,7 @@
 --[[
 	Benchmarks for Infinigrid.
-	Measures construction, index/position conversions, chunk lookup, and bulk
-	throughput using DiagnosticHelper's per-call sampling.
+	Measures construction, index/position conversions, chunk lookup, neighbor
+	queries, and bulk throughput using DiagnosticHelper's per-call sampling.
 
 	Each section has a header describing what is being measured, why it matters,
 	and how many iterations it runs.
@@ -39,127 +39,141 @@ print(`  Bulk iterations     : {BULK_ITERATIONS}`)
 print("======================================================================")
 
 -- ============================================================
--- [1] Grid Construction
--- Measures the cost of Grid.new() under various parameter
--- combinations. Construction includes ceil-alignment of the
--- center, chunk size, and world size, plus computing the
--- GenerationOrigin and GridSize. Hot path for dynamic grid
--- creation / respawning.
+-- [1] Grid.new() — Constructor Performance
+-- Measures the cost of creating a new grid instance with
+-- Grid.new(). Construction includes ceil-aligning the center
+-- to the 4-stud terrain grid, aligning chunk size to 8-stud
+-- multiples, expanding GridWorldSize to 8-stud multiples,
+-- computing GenerationOrigin and GridSize, and creating the
+-- OnChunkGenerated signal. This is the hot path for dynamic
+-- grid creation and respawning.
 -- ============================================================
 
 print("")
-print("  [1] Grid Construction")
-print("  Measures Grid.new() throughput with different parameter types.")
+print("  [1] Grid.new() — Constructor Performance")
+print("  How long does it take to create a grid under different configs?")
 print("----------------------------------------------------------------------")
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Default chunk size")
+	diag:StartTimer("Grid.new(center, worldSize) — default 64-stud chunks")
 	Grid.new(Vector3.zero, Vector3.new(64, 64, 64))
-	diag:StopTimer("Construct — Default chunk size")
+	diag:StopTimer("Grid.new(center, worldSize) — default 64-stud chunks")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Custom chunk size (8)")
+	diag:StartTimer("Grid.new(center, worldSize, 8) — explicit 8-stud chunks")
 	Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
-	diag:StopTimer("Construct — Custom chunk size (8)")
+	diag:StopTimer("Grid.new(center, worldSize, 8) — explicit 8-stud chunks")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Unaligned center")
+	diag:StartTimer("Grid.new(unaligned center) — triggers ceil alignment")
 	Grid.new(Vector3.new(1, 3, 5), Vector3.new(64, 64, 64), 8)
-	diag:StopTimer("Construct — Unaligned center")
+	diag:StopTimer("Grid.new(unaligned center) — triggers ceil alignment")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Unaligned chunk size (10)")
+	diag:StartTimer("Grid.new(chunkSize=10) — triggers chunk size alignment to 16")
 	Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 10)
-	diag:StopTimer("Construct — Unaligned chunk size (10)")
+	diag:StopTimer("Grid.new(chunkSize=10) — triggers chunk size alignment to 16")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Default world (max)")
+	diag:StartTimer("Grid.new(center only) — default max world size")
 	Grid.new(Vector3.zero)
-	diag:StopTimer("Construct — Default world (max)")
+	diag:StopTimer("Grid.new(center only) — default max world size")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Construct — Large world (512³)")
+	diag:StartTimer("Grid.new(512³ world, 8-stud chunks) — large grid (64³ cells)")
 	Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8)
-	diag:StopTimer("Construct — Large world (512³)")
+	diag:StopTimer("Grid.new(512³ world, 8-stud chunks) — large grid (64³ cells)")
 end
 
 -- ============================================================
--- [2] Index / Position Conversion
--- Measures the arithmetic cost of converting between grid
--- positions and flat chunk indices, and from grid positions to
--- world positions. These are the most frequently called methods
--- during chunk generation and spatial queries.
+-- [2] GridPositionToChunkIndex / ChunkIndexToGridPosition /
+--     GridPositionToWorldPosition
+-- Measures the arithmetic cost of converting between:
+--   • Grid positions (Vector3 in grid space) and flat chunk
+--     indices (row-major XYZ order: Z fastest, X slowest).
+--   • Grid positions and world positions (offset from
+--     GenerationOrigin by gridPosition * ChunkSize).
+-- These are the most frequently called methods during chunk
+-- generation, spatial queries, and neighbor lookups.
 -- ============================================================
 
 print("")
-print("  [2] Index / Position Conversion")
-print("  Measures per-call cost of the core mapping functions.")
+print("  [2] Index / Position Conversion Methods")
+print("  Per-call cost of GridPositionToChunkIndex, ChunkIndexToGridPosition,")
+print("  and GridPositionToWorldPosition on small (8³) and large (64³) grids.")
 print("----------------------------------------------------------------------")
 
-local smallGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8) -- 8x8x8 = 512 chunks
-local largeGrid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8) -- 64x64x64 = 262,144 chunks
+local smallGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8) -- GridSize=8×8×8 → 512 chunks
+local largeGrid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8) -- GridSize=64×64×64 → 262,144 chunks
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("GridPos→Index — 8³ grid")
+	diag:StartTimer("GridPositionToChunkIndex — 8³ grid (512 chunks)")
 	smallGrid:GridPositionToChunkIndex(Vector3.new(4, 5, 3))
-	diag:StopTimer("GridPos→Index — 8³ grid")
+	diag:StopTimer("GridPositionToChunkIndex — 8³ grid (512 chunks)")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("GridPos→Index — 64³ grid")
+	diag:StartTimer("GridPositionToChunkIndex — 64³ grid (262K chunks)")
 	largeGrid:GridPositionToChunkIndex(Vector3.new(32, 48, 17))
-	diag:StopTimer("GridPos→Index — 64³ grid")
+	diag:StopTimer("GridPositionToChunkIndex — 64³ grid (262K chunks)")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Index→GridPos — 8³ grid")
+	diag:StartTimer("ChunkIndexToGridPosition — 8³ grid, index 256 (middle)")
 	smallGrid:ChunkIndexToGridPosition(256)
-	diag:StopTimer("Index→GridPos — 8³ grid")
+	diag:StopTimer("ChunkIndexToGridPosition — 8³ grid, index 256 (middle)")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Index→GridPos — 64³ grid")
+	diag:StartTimer("ChunkIndexToGridPosition — 64³ grid, index 131072 (middle)")
 	largeGrid:ChunkIndexToGridPosition(131072)
-	diag:StopTimer("Index→GridPos — 64³ grid")
+	diag:StopTimer("ChunkIndexToGridPosition — 64³ grid, index 131072 (middle)")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("GridPos→WorldPos — 8³ grid")
+	diag:StartTimer("GridPositionToWorldPosition — 8³ grid")
 	smallGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
-	diag:StopTimer("GridPos→WorldPos — 8³ grid")
+	diag:StopTimer("GridPositionToWorldPosition — 8³ grid")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("GridPos→WorldPos — 64³ grid")
+	diag:StartTimer("GridPositionToWorldPosition — 64³ grid")
 	largeGrid:GridPositionToWorldPosition(Vector3.new(32, 48, 17))
-	diag:StopTimer("GridPos→WorldPos — 64³ grid")
+	diag:StopTimer("GridPositionToWorldPosition — 64³ grid")
 end
 
 for _ = 1, ITERATIONS do
-	diag:StartTimer("Full pipeline — Index→GridPos→WorldPos (8³)")
+	diag:StartTimer("ChunkIndex→GridPosition→WorldPosition pipeline — 8³ grid")
 	local pos = smallGrid:ChunkIndexToGridPosition(256)
 	smallGrid:GridPositionToWorldPosition(pos)
-	diag:StopTimer("Full pipeline — Index→GridPos→WorldPos (8³)")
+	diag:StopTimer("ChunkIndex→GridPosition→WorldPosition pipeline — 8³ grid")
 end
 
 -- ============================================================
 -- [3] GetNearestChunkAtPosition
--- Measures world-position-to-chunk lookup, which internally
--- rounds the position to the terrain grid and performs a hash
--- table lookup. Tested under hit (chunk exists), miss (empty
--- grid), offset (query inside chunk but not at corner), and
--- with a non-zero center to exercise the GenerationOrigin
--- subtraction path.
+-- Measures world-position-to-chunk lookup. Internally this
+-- subtracts GenerationOrigin, divides by ChunkSize, clamps to
+-- grid bounds, and performs a table lookup in self.Chunks.
+--
+-- Tested scenarios:
+--   • Hit: chunk exists at the queried position
+--   • Miss: grid is empty, so lookup returns nil
+--   • 1-stud offset: query is 1 stud away from chunk center
+--     (tests the floor+0.5 rounding path)
+--   • Non-zero center: center is at (500,500,500) to exercise
+--     the GenerationOrigin subtraction path
+--   • Large grid: 64³ grid (262K chunks) to measure hash
+--     table performance at scale
 -- ============================================================
 
 print("")
-print("  [3] GetNearestChunkAtPosition")
-print("  Measures chunk lookup from world coordinates.")
+print("  [3] GetNearestChunkAtPosition — World Position Chunk Lookup")
+print("  How fast can we find which chunk contains a given world position?")
 print("----------------------------------------------------------------------")
 
 do
@@ -171,23 +185,23 @@ do
 	local queryWorldPos = lookupGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
 
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("ChunkLookup — 8³, cache hit")
+		diag:StartTimer("GetNearestChunkAtPosition — 8³ grid, populated (chunk found)")
 		lookupGrid:GetNearestChunkAtPosition(queryWorldPos)
-		diag:StopTimer("ChunkLookup — 8³, cache hit")
+		diag:StopTimer("GetNearestChunkAtPosition — 8³ grid, populated (chunk found)")
 	end
 
 	local emptyGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("ChunkLookup — 8³, cache miss")
+		diag:StartTimer("GetNearestChunkAtPosition — 8³ grid, empty (returns nil)")
 		emptyGrid:GetNearestChunkAtPosition(queryWorldPos)
-		diag:StopTimer("ChunkLookup — 8³, cache miss")
+		diag:StopTimer("GetNearestChunkAtPosition — 8³ grid, empty (returns nil)")
 	end
 
 	local offsetPos = queryWorldPos + Vector3.new(1, 1, 1)
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("ChunkLookup — 8³, 1-stud offset")
+		diag:StartTimer("GetNearestChunkAtPosition — 8³ grid, +1 stud offset (rounding)")
 		lookupGrid:GetNearestChunkAtPosition(offsetPos)
-		diag:StopTimer("ChunkLookup — 8³, 1-stud offset")
+		diag:StopTimer("GetNearestChunkAtPosition — 8³ grid, +1 stud offset (rounding)")
 	end
 end
 
@@ -200,9 +214,9 @@ do
 	local offsetQueryPos = offsetGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
 
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("ChunkLookup — 8³, non-zero center")
+		diag:StartTimer("GetNearestChunkAtPosition — 8³ grid, center=(500,500,500)")
 		offsetGrid:GetNearestChunkAtPosition(offsetQueryPos)
-		diag:StopTimer("ChunkLookup — 8³, non-zero center")
+		diag:StopTimer("GetNearestChunkAtPosition — 8³ grid, center=(500,500,500)")
 	end
 end
 
@@ -215,45 +229,139 @@ do
 	local bigQueryPos = bigLookupGrid:GridPositionToWorldPosition(Vector3.new(32, 48, 17))
 
 	for _ = 1, ITERATIONS do
-		diag:StartTimer("ChunkLookup — 64³, cache hit")
+		diag:StartTimer("GetNearestChunkAtPosition — 64³ grid (262K chunks), populated")
 		bigLookupGrid:GetNearestChunkAtPosition(bigQueryPos)
-		diag:StopTimer("ChunkLookup — 64³, cache hit")
+		diag:StopTimer("GetNearestChunkAtPosition — 64³ grid (262K chunks), populated")
 	end
 end
 
 -- ============================================================
--- [4] Bulk Operations
--- Measures throughput of processing all 512 chunks in a single
--- pass. This simulates real workloads like full-grid iteration,
--- chunk generation sweeps, and spatial query across all chunks.
--- Each timer captures one complete pass over 512 chunks.
+-- [4] _GetNearestChunkIndexAtPosition (internal)
+-- Same algorithm as GetNearestChunkAtPosition but returns the
+-- raw chunk index (number) instead of doing the Chunks table
+-- lookup. Used internally when only the index is needed.
+-- Compared against GetNearestChunkAtPosition to measure the
+-- cost of the table lookup itself.
 -- ============================================================
 
 print("")
-print("  [4] Bulk Operations (512 chunks per pass)")
-print("  Measures full-sweep throughput for batch processing.")
+print("  [4] _GetNearestChunkIndexAtPosition — Index-Only Lookup (internal)")
+print("  Same math as GetNearestChunkAtPosition but skips the Chunks table read.")
+print("----------------------------------------------------------------------")
+
+do
+	local indexGrid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+	local queryWorldPos = indexGrid:GridPositionToWorldPosition(Vector3.new(4, 5, 3))
+
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("_GetNearestChunkIndexAtPosition — 8³ grid")
+		indexGrid:_GetNearestChunkIndexAtPosition(queryWorldPos)
+		diag:StopTimer("_GetNearestChunkIndexAtPosition — 8³ grid")
+	end
+
+	local bigIndexGrid = Grid.new(Vector3.zero, Vector3.new(512, 512, 512), 8)
+	local bigQueryPos = bigIndexGrid:GridPositionToWorldPosition(Vector3.new(32, 48, 17))
+
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("_GetNearestChunkIndexAtPosition — 64³ grid")
+		bigIndexGrid:_GetNearestChunkIndexAtPosition(bigQueryPos)
+		diag:StopTimer("_GetNearestChunkIndexAtPosition — 64³ grid")
+	end
+
+	local offsetQueryPos = queryWorldPos + Vector3.new(1, 1, 1)
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("_GetNearestChunkIndexAtPosition — 8³ grid, +1 stud offset")
+		indexGrid:_GetNearestChunkIndexAtPosition(offsetQueryPos)
+		diag:StopTimer("_GetNearestChunkIndexAtPosition — 8³ grid, +1 stud offset")
+	end
+end
+
+-- ============================================================
+-- [5] GetNeighboringChunksIndices
+-- Measures the cost of computing the 6-directional (±X, ±Y,
+-- ±Z) neighbor indices for a given chunk. Internally this
+-- performs modular arithmetic and bounds checking against
+-- _theoreticalMaxChunkIndex and GridSize to determine valid
+-- neighbors. Tested at:
+--   • Interior chunk (has all 6 neighbors)
+--   • Corner chunk at (0,0,0) (has only 3 neighbors)
+--   • Edge chunk (has 4-5 neighbors)
+--   • Large grid to measure scaling
+-- ============================================================
+
+print("")
+print("  [5] GetNeighboringChunksIndices — 6-Directional Neighbor Lookup")
+print("  How fast can we compute the ±X, ±Y, ±Z neighbor indices for a chunk?")
+print("----------------------------------------------------------------------")
+
+do
+	-- Interior chunk: all 6 neighbors valid
+	local interiorIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, interior (6 neighbors)")
+		smallGrid:GetNeighboringChunksIndices(interiorIndex)
+		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, interior (6 neighbors)")
+	end
+
+	-- Corner chunk at origin: only +X, +Y, +Z valid (3 neighbors)
+	local cornerIndex = smallGrid:GridPositionToChunkIndex(Vector3.zero)
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
+		smallGrid:GetNeighboringChunksIndices(cornerIndex)
+		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, corner at (0,0,0) (3 neighbors)")
+	end
+
+	-- Edge chunk: some neighbors valid, some not
+	local edgeIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(0, 4, 4))
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, edge chunk (5 neighbors)")
+		smallGrid:GetNeighboringChunksIndices(edgeIndex)
+		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, edge chunk (5 neighbors)")
+	end
+
+	-- Far corner chunk: (7,7,7) — only -X, -Y, -Z valid (3 neighbors)
+	local farCornerIndex = smallGrid:GridPositionToChunkIndex(Vector3.new(7, 7, 7))
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetNeighboringChunksIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
+		smallGrid:GetNeighboringChunksIndices(farCornerIndex)
+		diag:StopTimer("GetNeighboringChunksIndices — 8³ grid, far corner (7,7,7) (3 neighbors)")
+	end
+
+	-- Large grid interior
+	local largeInteriorIndex = largeGrid:GridPositionToChunkIndex(Vector3.new(32, 32, 32))
+	for _ = 1, ITERATIONS do
+		diag:StartTimer("GetNeighboringChunksIndices — 64³ grid, interior (6 neighbors)")
+		largeGrid:GetNeighboringChunksIndices(largeInteriorIndex)
+		diag:StopTimer("GetNeighboringChunksIndices — 64³ grid, interior (6 neighbors)")
+	end
+end
+
+-- ============================================================
+-- [6] Bulk Operations (512 chunks per pass)
+-- Measures throughput of processing all 512 chunks in an 8³
+-- grid in a single pass. Each timer captures one complete pass.
+-- This simulates real workloads like:
+--   • Full-grid iteration during chunk generation sweeps
+--   • Spatial queries across all chunks
+--   • Neighbor lookups for connectivity checks
+-- ============================================================
+
+print("")
+print("  [6] Bulk Operations (512 chunks per pass)")
+print("  Full-sweep throughput: every chunk in an 8³ grid processed per pass.")
 print("----------------------------------------------------------------------")
 
 for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk — Index↔GridPos round-trip ×512 (8³)")
+	diag:StartTimer("Bulk ×512 — ChunkIndexToGridPosition + GridPositionToChunkIndex round-trip (8³)")
 	for i = 0, 511 do
 		local pos = smallGrid:ChunkIndexToGridPosition(i)
 		smallGrid:GridPositionToChunkIndex(pos)
 	end
-	diag:StopTimer("Bulk — Index↔GridPos round-trip ×512 (8³)")
+	diag:StopTimer("Bulk ×512 — ChunkIndexToGridPosition + GridPositionToChunkIndex round-trip (8³)")
 end
 
 for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk — Index↔GridPos round-trip ×512 (64³)")
-	for i = 0, 511 do
-		local pos = largeGrid:ChunkIndexToGridPosition(i)
-		largeGrid:GridPositionToChunkIndex(pos)
-	end
-	diag:StopTimer("Bulk — Index↔GridPos round-trip ×512 (64³)")
-end
-
-for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk — Enumerate all 512 via nested XYZ (8³)")
+	diag:StartTimer("Bulk ×512 — Nested XYZ → GridPositionToChunkIndex (8³)")
 	local gs = smallGrid.GridSize
 	for x = 0, gs.X - 1 do
 		for y = 0, gs.Y - 1 do
@@ -262,16 +370,16 @@ for _ = 1, BULK_ITERATIONS do
 			end
 		end
 	end
-	diag:StopTimer("Bulk — Enumerate all 512 via nested XYZ (8³)")
+	diag:StopTimer("Bulk ×512 — Nested XYZ → GridPositionToChunkIndex (8³)")
 end
 
 for _ = 1, BULK_ITERATIONS do
-	diag:StartTimer("Bulk — Full pipeline ×512 (Index→Pos→World)")
+	diag:StartTimer("Bulk ×512 — ChunkIndex→GridPos→WorldPos full pipeline (8³)")
 	for i = 0, 511 do
 		local pos = smallGrid:ChunkIndexToGridPosition(i)
 		smallGrid:GridPositionToWorldPosition(pos)
 	end
-	diag:StopTimer("Bulk — Full pipeline ×512 (Index→Pos→World)")
+	diag:StopTimer("Bulk ×512 — ChunkIndex→GridPos→WorldPos full pipeline (8³)")
 end
 
 do
@@ -282,13 +390,21 @@ do
 	end
 
 	for _ = 1, BULK_ITERATIONS do
-		diag:StartTimer("Bulk — GetNearestChunkAtPosition ×512 (8³)")
+		diag:StartTimer("Bulk ×512 — GetNearestChunkAtPosition (Index→GridPos→WorldPos→Lookup) (8³)")
 		for i = 0, 511 do
 			local pos = bulkLookupGrid:ChunkIndexToGridPosition(i)
 			local worldPos = bulkLookupGrid:GridPositionToWorldPosition(pos)
 			bulkLookupGrid:GetNearestChunkAtPosition(worldPos)
 		end
-		diag:StopTimer("Bulk — GetNearestChunkAtPosition ×512 (8³)")
+		diag:StopTimer("Bulk ×512 — GetNearestChunkAtPosition (Index→GridPos→WorldPos→Lookup) (8³)")
+	end
+
+	for _ = 1, BULK_ITERATIONS do
+		diag:StartTimer("Bulk ×512 — GetNeighboringChunksIndices for every chunk (8³)")
+		for i = 0, 511 do
+			bulkLookupGrid:GetNeighboringChunksIndices(i)
+		end
+		diag:StopTimer("Bulk ×512 — GetNeighboringChunksIndices for every chunk (8³)")
 	end
 end
 

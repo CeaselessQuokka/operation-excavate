@@ -7,8 +7,6 @@
 	TODO: should have a method to serialize and a constructor to do fromSerial. That way it can be easily saved and loaded, and also sent over remotes if needed? I should only be sending patches anyway, but it'd be useful for syncing on join so yeah i guess
 	TODO: Perhaps this low memory mode is a serialized version in a buffer or something? ANd this is added to a bigger buffer that has asleep chunks? We would need a lookup buffer hmmm, most likely not worth
 	TODO: have viewer able to actually edit the spawnable data real-time with its edit functionality
-
-	TODO WHEN BACK: VERIFY CORRECTNESS OF CURRENT METHODS AND GENERATION BY FILLING OUT THE DEBUGGER TO VISUALIZE CHUNKS (see if Highlight instance will work with BlockMesh scale)
 --]]
 
 --!strict
@@ -16,12 +14,14 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local DebugHelper = require(ReplicatedStorage.Shared.Helpers.DebugHelper)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
+export type ChunkIndex = number
 export type BaseChunkState<ChunkState> = {
 	Grid: Grid<ChunkState>, -- Reference to the parent grid of this chunk.
-	ChunkIndex: number, -- The index of the chunk in the grid. Calculated as (x + y * gridSizeX + z * gridSizeX * gridSizeY).
+	ChunkIndex: ChunkIndex, -- The index of the chunk in the grid. Calculated as (x + y * gridSizeX + z * gridSizeX * gridSizeY).
 
 	-- TODO: For ChunkState (future type note: this may different from client to server, so I need to handle that gracefully somehow; probably just using the new type passing with `fn<<TypeHere>>(...)`)
 	-- A buffer that only exists if the chunk is in low memory mode.
@@ -67,8 +67,9 @@ export type Grid<ChunkState> = typeof(setmetatable(
 		ChunkSize: number, -- Size of each chunk in studs (cubed).
 		GridSize: Vector3, -- Size of the grid in grid space. Calculated as GridWorldSize / ChunkSize.
 		GridWorldSize: Vector3, -- Optional maximum size of the grid in studs. If nil, the grid can grow to DEFAULT_MAX_GRID_SIZE.
-		Chunks: { [number]: BaseChunkState<ChunkState> }, -- Table of chunks (can have holes) indexed by their chunk index. Chunks are stored in XYZ order exactly like terrain.
+		Chunks: { [ChunkIndex]: BaseChunkState<ChunkState> }, -- Table of chunks (can have holes) indexed by their chunk index. Chunks are stored in XYZ order exactly like terrain.
 		_zeroBasedGridSize: Vector3, -- Equal to GridSize - Vector3.one. Used for bounds checking when clamping chunk indices.
+		_theoreticalMaxChunkIndex: number, -- Used for bounds checking when clamping chunk indices.
 
 		OnChunkGenerated: Signal.Signal<BaseChunkState<ChunkState>>,
 	},
@@ -88,6 +89,7 @@ function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSiz
 		GridWorldSize = worldSpaceSize,
 		Chunks = {},
 		_zeroBasedGridSize = gridSpaceSize - Vector3.one,
+		_theoreticalMaxChunkIndex = (gridSpaceSize.X * gridSpaceSize.Y * gridSpaceSize.Z) - 1,
 
 		OnChunkGenerated = Signal.new(),
 	}, Grid)
@@ -96,12 +98,73 @@ function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSiz
 			`Grid center {center} was expanded to {grid.Center} to align with terrain resolution (4x4x4). This may cause unexpected behavior if you were relying on the original center.`
 		)
 	end
+	if gridWorldSize and not grid.GridWorldSize:FuzzyEq(gridWorldSize) then
+		warn(
+			`Grid world size {gridWorldSize} was expanded to {grid.GridWorldSize} to align with terrain resolution (8x8x8). This may cause unexpected behavior if you were relying on the original world size.`
+		)
+	end
 	if grid.ChunkSize ~= chunkSize then
 		warn(
 			`Chunk size {chunkSize} was expanded to {grid.ChunkSize} to align with terrain resolution (8x8x8). This may cause unexpected behavior if you were relying on the original chunk size.`
 		)
 	end
 	return grid
+end
+
+function Grid.GetNeighboringChunksIndices<ChunkState>(self: Grid<ChunkState>, chunkIndex: ChunkIndex): { ChunkIndex }
+	local maxIndex = self._theoreticalMaxChunkIndex
+	local gridSize = self.GridSize
+	local sizeY, sizeZ = gridSize.Y, gridSize.Z
+	local sizeYZ = sizeY * sizeZ
+	local chunkYCoordinate = (chunkIndex % sizeYZ) // sizeZ
+	local neighborIndex = 1
+	local neighboringChunks: { ChunkIndex } = table.create(6) :: any
+	local leftChunkIndex = chunkIndex - sizeYZ
+	if
+		(leftChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
+		and leftChunkIndex >= 0
+		and leftChunkIndex <= maxIndex
+	then
+		neighboringChunks[neighborIndex] = leftChunkIndex
+		neighborIndex += 1
+	end
+	local rightChunkIndex = chunkIndex + sizeYZ
+	if
+		(rightChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
+		and rightChunkIndex >= 0
+		and rightChunkIndex <= maxIndex
+	then
+		neighboringChunks[neighborIndex] = rightChunkIndex
+		neighborIndex += 1
+	end
+	local backChunkIndex = chunkIndex - 1
+	if
+		(backChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
+		and backChunkIndex >= 0
+		and backChunkIndex <= maxIndex
+	then
+		neighboringChunks[neighborIndex] = backChunkIndex
+		neighborIndex += 1
+	end
+	local frontChunkIndex = chunkIndex + 1
+	if
+		(frontChunkIndex % sizeYZ) // sizeZ == chunkYCoordinate
+		and frontChunkIndex >= 0
+		and frontChunkIndex <= maxIndex
+	then
+		neighboringChunks[neighborIndex] = frontChunkIndex
+		neighborIndex += 1
+	end
+	local bottomChunkIndex = chunkIndex - sizeZ
+	if bottomChunkIndex >= 0 and bottomChunkIndex <= maxIndex then
+		neighboringChunks[neighborIndex] = bottomChunkIndex
+		neighborIndex += 1
+	end
+	local topChunkIndex = chunkIndex + sizeZ
+	if topChunkIndex >= 0 and topChunkIndex <= maxIndex then
+		neighboringChunks[neighborIndex] = topChunkIndex
+	end
+	return neighboringChunks
 end
 
 function Grid.GetNearestChunkAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): BaseChunkState<ChunkState>?

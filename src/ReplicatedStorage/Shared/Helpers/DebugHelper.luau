@@ -737,8 +737,10 @@ local function MakeDebugPart(): Part
 	part.CanTouch = false
 	part.CanQuery = false
 	part.CastShadow = false
-	part.Material = Enum.Material.Neon
+	part.Material = Enum.Material.SmoothPlastic
 	part.Size = Vector3.one
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.TopSurface = Enum.SurfaceType.Smooth
 	return part
 end
 
@@ -1224,10 +1226,48 @@ function DebugHelper.Capsule(
 	radius = math.max(radius, 0)
 	local opts = ReconcileOptions(options, DEFAULT_CAPSULE) :: Options & CapsuleOptions
 	local color = ResolveColor(opts.Color)
-	local folder = Instance.new("Folder")
-	folder.Name = opts.Name
 	local diameter = radius * 2
 	local distance = (endPos - startPos).Magnitude
+
+	if opts.Reuse and (opts.Reuse :: Instance):IsA("Folder") then
+		local folder = opts.Reuse :: Folder
+		-- Update or create/destroy cylinder body
+		local body = folder:FindFirstChild("Body") :: BasePart?
+		if distance >= EPSILON then
+			if not body then
+				body = MakeCylinderPart()
+				body.Name = "Body"
+				body.Parent = folder
+			end
+			local b = body :: BasePart
+			local midPoint = (startPos + endPos) / 2
+			b.CFrame = SafeLookAt(midPoint, endPos) * CFrame.Angles(0, HALF_PI, 0)
+			b.Color = color
+			b.Transparency = opts.Transparency
+			SetMeshScale(b, Vector3.new(distance, diameter, diameter))
+		elseif body then
+			body:Destroy()
+		end
+		-- Update caps
+		local startCap = folder:FindFirstChild("StartCap") :: BasePart?
+		if startCap then
+			startCap.CFrame = CFrame.new(startPos)
+			startCap.Color = color
+			startCap.Transparency = opts.Transparency
+			SetMeshScale(startCap, Vector3.new(diameter, diameter, diameter))
+		end
+		local endCap = folder:FindFirstChild("EndCap") :: BasePart?
+		if endCap then
+			endCap.CFrame = CFrame.new(endPos)
+			endCap.Color = color
+			endCap.Transparency = opts.Transparency
+			SetMeshScale(endCap, Vector3.new(diameter, diameter, diameter))
+		end
+		return folder
+	end
+
+	local folder = Instance.new("Folder")
+	folder.Name = opts.Name
 	if distance >= EPSILON then
 		local midPoint = (startPos + endPos) / 2
 		local cylPart = MakeCylinderPart()
@@ -1238,8 +1278,10 @@ function DebugHelper.Capsule(
 		cylPart.Name = "Body"
 		cylPart.Parent = folder
 	end
-	CreateMarker(startPos, diameter, color, opts.Transparency, folder)
-	CreateMarker(endPos, diameter, color, opts.Transparency, folder)
+	local startMarker = CreateMarker(startPos, diameter, color, opts.Transparency, folder)
+	startMarker.Name = "StartCap"
+	local endMarker = CreateMarker(endPos, diameter, color, opts.Transparency, folder)
+	endMarker.Name = "EndCap"
 	folder.Parent = GetOrCreateDebugFolder()
 	ApplyDuration(folder, opts.Duration)
 	return folder
@@ -1505,6 +1547,26 @@ function DebugHelper.Text(position: Vector3, text: string, options: (Options & P
 	if text == "" then
 		text = "<empty>"
 	end
+
+	if opts.Reuse and (opts.Reuse :: Instance):IsA("BasePart") then
+		local part = opts.Reuse :: Part
+		part.CFrame = CFrame.new(position)
+		local billboard = part:FindFirstChildOfClass("BillboardGui") :: BillboardGui?
+		if billboard then
+			billboard.AlwaysOnTop = opts.AlwaysOnTop
+			billboard.MaxDistance = opts.MaxDistance
+			local label = billboard:FindFirstChildOfClass("TextLabel") :: TextLabel?
+			if label then
+				label.TextColor3 = opts.Color
+				label.TextSize = opts.TextSize
+				label.Text = text
+				label.TextStrokeTransparency = opts.TextStrokeTransparency
+				label.TextStrokeColor3 = opts.TextStrokeColor
+			end
+		end
+		return part
+	end
+
 	local part = MakeDebugPart()
 	part.Transparency = 1
 	part.Size = Vector3.new(0.1, 0.1, 0.1)
@@ -1540,10 +1602,39 @@ function DebugHelper.LabeledPoint(
 	end
 	local opts = ReconcileOptions(options, DEFAULT_POINT) :: Options & PointOptions
 	local color = ResolveColor(opts.Color)
+	local diameter = opts.Size
+	local labelPos = position + Vector3.new(0, diameter + 0.5, 0)
+
+	if opts.Reuse and (opts.Reuse :: Instance):IsA("Folder") then
+		local folder = opts.Reuse :: Folder
+		local marker = folder:FindFirstChild("Marker") :: BasePart?
+		if marker then
+			marker.CFrame = CFrame.new(position)
+			marker.Color = color
+			marker.Transparency = opts.Transparency
+			SetMeshScale(marker, Vector3.new(diameter, diameter, diameter))
+		end
+		local labelPart = folder:FindFirstChild("Label") :: BasePart?
+		if labelPart then
+			labelPart.CFrame = CFrame.new(labelPos)
+			local billboard = labelPart:FindFirstChildOfClass("BillboardGui")
+			if billboard then
+				local textLabel = billboard:FindFirstChildOfClass("TextLabel")
+				if textLabel then
+					textLabel.TextColor3 = color
+					textLabel.Text = label
+				end
+			end
+		end
+		return folder
+	end
+
 	local folder = Instance.new("Folder")
 	folder.Name = opts.Name
-	CreateMarker(position, opts.Size, color, opts.Transparency, folder)
-	CreateBillboardLabel(position + Vector3.new(0, opts.Size + 0.5, 0), label, color, 14, folder)
+	local marker = CreateMarker(position, diameter, color, opts.Transparency, folder)
+	marker.Name = "Marker"
+	local labelPart = CreateBillboardLabel(labelPos, label, color, 14, folder)
+	labelPart.Name = "Label"
 	folder.Parent = GetOrCreateDebugFolder()
 	ApplyDuration(folder, opts.Duration)
 	return folder
@@ -1699,15 +1790,29 @@ function DebugHelper.Highlight(target: Instance, options: (Options & Partial<Hig
 		return nil
 	end
 	local opts = ReconcileOptions(options, DEFAULT_HIGHLIGHT) :: Options & HighlightOptions
-	local highlight = Instance.new("Highlight")
-	highlight.Name = opts.Name
+
+	local highlight: Highlight
+	local isNew: boolean
+
+	if opts.Reuse and (opts.Reuse :: Instance):IsA("Highlight") then
+		highlight = opts.Reuse :: Highlight
+		isNew = false
+	else
+		highlight = Instance.new("Highlight")
+		isNew = true
+	end
+
 	highlight.Adornee = target
 	highlight.FillColor = opts.FillColor
 	highlight.OutlineColor = opts.OutlineColor
 	highlight.FillTransparency = opts.FillTransparency
 	highlight.OutlineTransparency = opts.OutlineTransparency
-	highlight.Parent = GetOrCreateDebugFolder()
-	ApplyDuration(highlight, opts.Duration)
+
+	if isNew then
+		highlight.Name = opts.Name
+		highlight.Parent = GetOrCreateDebugFolder()
+		ApplyDuration(highlight, opts.Duration)
+	end
 	return highlight
 end
 
@@ -2567,116 +2672,88 @@ end
 do
 	local COLOR_SCHEMES: { { Color3 } } = table.freeze({
 		table.freeze({
-			Color3.fromRGB(230, 25, 25),
-			Color3.fromRGB(25, 80, 230),
-			Color3.fromRGB(25, 200, 25),
-			Color3.fromRGB(240, 220, 0),
-			Color3.fromRGB(220, 0, 220),
+			Color3.fromRGB(255, 0, 0), -- red
+			Color3.fromRGB(255, 125, 0), -- orange
+			Color3.fromRGB(255, 255, 50), -- yellow
+			Color3.fromRGB(0, 255, 0), -- spring
+			Color3.fromRGB(100, 175, 100), -- green
+			Color3.fromRGB(0, 255, 255), -- cyan
+			Color3.fromRGB(0, 0, 255), -- indigo
+			Color3.fromRGB(100, 100, 255), -- blue
+			Color3.fromRGB(200, 0, 255), -- purple
+			Color3.fromRGB(255, 0, 150), -- magenta
 		}),
 		table.freeze({
-			Color3.fromRGB(255, 182, 193),
-			Color3.fromRGB(137, 207, 240),
-			Color3.fromRGB(152, 251, 252),
-			Color3.fromRGB(255, 253, 150),
-			Color3.fromRGB(200, 162, 200),
+			Color3.fromRGB(255, 155, 155), -- salmon
+			Color3.fromRGB(255, 210, 160), -- peach
+			Color3.fromRGB(250, 248, 155), -- butter
+			Color3.fromRGB(175, 250, 175), -- mint
+			Color3.fromRGB(155, 235, 240), -- aqua
+			Color3.fromRGB(155, 190, 255), -- periwinkle
+			Color3.fromRGB(195, 168, 255), -- lavender
+			Color3.fromRGB(250, 175, 230), -- orchid
+			Color3.fromRGB(255, 195, 215), -- rose
+			Color3.fromRGB(220, 212, 180), -- linen
 		}),
 		table.freeze({
-			Color3.fromRGB(255, 0, 230),
-			Color3.fromRGB(0, 255, 255),
-			Color3.fromRGB(57, 255, 20),
-			Color3.fromRGB(255, 95, 0),
-			Color3.fromRGB(155, 0, 255),
+			Color3.fromRGB(150, 50, 50), -- brick
+			Color3.fromRGB(185, 80, 20), -- terra cotta
+			Color3.fromRGB(165, 115, 75), -- sienna
+			Color3.fromRGB(200, 165, 60), -- amber
+			Color3.fromRGB(215, 190, 130), -- sand
+			Color3.fromRGB(120, 125, 20), -- olive
+			Color3.fromRGB(80, 140, 55), -- moss
+			Color3.fromRGB(55, 90, 55), -- forest
+			Color3.fromRGB(140, 100, 55), -- tawny
+			Color3.fromRGB(75, 45, 15), -- espresso
 		}),
 		table.freeze({
-			Color3.fromRGB(185, 83, 27),
-			Color3.fromRGB(110, 120, 0),
-			Color3.fromRGB(80, 45, 20),
-			Color3.fromRGB(210, 185, 130),
-			Color3.fromRGB(100, 145, 75),
+			Color3.fromRGB(5, 30, 140), -- abyss
+			Color3.fromRGB(20, 70, 100), -- midnight
+			Color3.fromRGB(20, 110, 80), -- deep sea
+			Color3.fromRGB(70, 80, 200), -- cobalt
+			Color3.fromRGB(80, 100, 160), -- slate
+			Color3.fromRGB(40, 160, 170), -- teal
+			Color3.fromRGB(100, 150, 110), -- seafoam
+			Color3.fromRGB(40, 200, 200), -- lagoon
+			Color3.fromRGB(140, 180, 230), -- sky
+			Color3.fromRGB(160, 210, 240), -- ice
 		}),
 		table.freeze({
-			Color3.fromRGB(0, 30, 120),
-			Color3.fromRGB(0, 150, 150),
-			Color3.fromRGB(50, 210, 210),
-			Color3.fromRGB(110, 210, 170),
-			Color3.fromRGB(255, 110, 74),
+			Color3.fromRGB(240, 240, 240), -- near white
+			Color3.fromRGB(215, 215, 215), -- silver
+			Color3.fromRGB(190, 190, 190), -- light gray
+			Color3.fromRGB(165, 165, 165), -- mid-light
+			Color3.fromRGB(140, 140, 140), -- mid gray
+			Color3.fromRGB(115, 115, 115), -- mid-dark
+			Color3.fromRGB(90, 90, 90), -- dark gray
+			Color3.fromRGB(65, 65, 65), -- charcoal
+			Color3.fromRGB(40, 40, 40), -- near black
+			Color3.fromRGB(15, 15, 15), -- deepest
 		}),
 		table.freeze({
-			Color3.fromRGB(180, 0, 30),
-			Color3.fromRGB(255, 100, 0),
-			Color3.fromRGB(255, 200, 0),
-			Color3.fromRGB(255, 90, 120),
-			Color3.fromRGB(140, 30, 140),
+			Color3.fromRGB(190, 100, 90), -- dusty coral
+			Color3.fromRGB(195, 165, 100), -- dusty gold
+			Color3.fromRGB(150, 170, 100), -- sage
+			Color3.fromRGB(120, 140, 70), -- olive
+			Color3.fromRGB(90, 160, 145), -- dusty teal
+			Color3.fromRGB(95, 120, 105), -- eucalyptus
+			Color3.fromRGB(100, 135, 175), -- slate blue
+			Color3.fromRGB(135, 95, 155), -- dusty violet
+			Color3.fromRGB(165, 140, 170), -- dusty lilac
+			Color3.fromRGB(185, 115, 140), -- dusty pink
 		}),
 		table.freeze({
-			Color3.fromRGB(224, 17, 95),
-			Color3.fromRGB(0, 155, 72),
-			Color3.fromRGB(15, 82, 186),
-			Color3.fromRGB(153, 102, 204),
-			Color3.fromRGB(255, 185, 15),
-		}),
-		table.freeze({
-			Color3.fromRGB(255, 85, 160),
-			Color3.fromRGB(64, 224, 208),
-			Color3.fromRGB(255, 240, 30),
-			Color3.fromRGB(80, 120, 255),
-			Color3.fromRGB(255, 150, 50),
-		}),
-		table.freeze({
-			Color3.fromRGB(1, 68, 33),
-			Color3.fromRGB(155, 170, 100),
-			Color3.fromRGB(120, 70, 30),
-			Color3.fromRGB(220, 175, 40),
-			Color3.fromRGB(140, 30, 70),
-		}),
-		table.freeze({
-			Color3.fromRGB(200, 16, 16),
-			Color3.fromRGB(230, 88, 25),
-			Color3.fromRGB(255, 155, 0),
-			Color3.fromRGB(255, 225, 30),
-			Color3.fromRGB(255, 245, 180),
-		}),
-		table.freeze({
-			Color3.fromRGB(70, 140, 210),
-			Color3.fromRGB(170, 225, 250),
-			Color3.fromRGB(80, 180, 180),
-			Color3.fromRGB(165, 145, 210),
-			Color3.fromRGB(225, 238, 250),
-		}),
-		table.freeze({
-			Color3.fromRGB(252, 60, 100),
-			Color3.fromRGB(255, 170, 0),
-			Color3.fromRGB(0, 185, 80),
-			Color3.fromRGB(0, 145, 210),
-			Color3.fromRGB(190, 60, 190),
-		}),
-		table.freeze({
-			Color3.fromRGB(200, 165, 0),
-			Color3.fromRGB(160, 55, 10),
-			Color3.fromRGB(0, 110, 110),
-			Color3.fromRGB(85, 110, 15),
-			Color3.fromRGB(100, 10, 30),
-		}),
-		table.freeze({
-			Color3.fromRGB(255, 200, 0),
-			Color3.fromRGB(72, 0, 120),
-			Color3.fromRGB(0, 30, 100),
-			Color3.fromRGB(180, 12, 30),
-			Color3.fromRGB(240, 230, 200),
-		}),
-		table.freeze({
-			Color3.fromRGB(255, 0, 110),
-			Color3.fromRGB(0, 180, 255),
-			Color3.fromRGB(170, 255, 0),
-			Color3.fromRGB(255, 60, 0),
-			Color3.fromRGB(100, 0, 200),
-		}),
-		table.freeze({
-			Color3.fromRGB(240, 240, 240),
-			Color3.fromRGB(180, 180, 180),
-			Color3.fromRGB(120, 120, 120),
-			Color3.fromRGB(60, 60, 60),
-			Color3.fromRGB(20, 20, 20),
+			Color3.fromRGB(120, 45, 45), -- dark red
+			Color3.fromRGB(115, 60, 25), -- dark burnt orange
+			Color3.fromRGB(125, 105, 35), -- dark gold
+			Color3.fromRGB(80, 95, 35), -- dark olive
+			Color3.fromRGB(40, 110, 50), -- dark green
+			Color3.fromRGB(35, 100, 110), -- dark teal
+			Color3.fromRGB(45, 55, 125), -- dark blue
+			Color3.fromRGB(95, 40, 120), -- dark purple
+			Color3.fromRGB(125, 60, 90), -- dark rose
+			Color3.fromRGB(60, 85, 75), -- dark sage
 		}),
 	})
 	local N_SCHEMES = #COLOR_SCHEMES

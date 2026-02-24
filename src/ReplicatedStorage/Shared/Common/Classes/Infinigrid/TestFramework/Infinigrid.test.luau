@@ -515,6 +515,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(grid.ChunkIndexToGridPosition).To.Exist()
 			expect(grid.GridPositionToWorldPosition).To.Exist()
 			expect(grid.GetNearestChunkAtPosition).To.Exist()
+			expect(grid.GetNeighboringChunksIndices).To.Exist()
+			expect(grid._GetNearestChunkIndexAtPosition).To.Exist()
 			expect(grid.OnChunkGenerated).To.Exist()
 		end)
 
@@ -1808,6 +1810,8 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			expect(grid.GridWorldSize).To.BeA("Vector3")
 			expect(grid.Chunks).To.BeA("table")
 			expect(grid.OnChunkGenerated).To.Exist()
+			expect(grid._zeroBasedGridSize).To.BeA("Vector3")
+			expect(grid._theoreticalMaxChunkIndex).To.BeA("number")
 		end)
 
 		it("should return a number from GridPositionToChunkIndex", function()
@@ -1833,6 +1837,337 @@ return Litmus.Suite("Infinigrid", function(describe, it, expect, beforeEach, aft
 			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
 			local result = grid:GetNearestChunkAtPosition(Vector3.zero)
 			expect(result == nil or typeof(result) == "table").To.Equal(true)
+		end)
+
+		it("should return a number from _GetNearestChunkIndexAtPosition", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local index = grid:_GetNearestChunkIndexAtPosition(grid.GenerationOrigin)
+			expect(index).To.BeA("number")
+			expect(index % 1).To.Equal(0)
+		end)
+
+		it("should return a table from GetNeighboringChunksIndices", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local neighbors = grid:GetNeighboringChunksIndices(0)
+			expect(neighbors).To.BeA("table")
+		end)
+	end)
+
+	-- ================================================================
+	-- Internal Fields
+	-- ================================================================
+	describe("internal fields", function()
+		it("should set _zeroBasedGridSize to GridSize - Vector3.one", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			expect(grid._zeroBasedGridSize).To.Equal(grid.GridSize - Vector3.one)
+		end)
+
+		it("should set _theoreticalMaxChunkIndex to total chunks - 1", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gs = grid.GridSize
+			expect(grid._theoreticalMaxChunkIndex).To.Equal((gs.X * gs.Y * gs.Z) - 1)
+		end)
+
+		it("should compute _theoreticalMaxChunkIndex correctly for non-cubic grids", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8)
+			local gs = grid.GridSize
+			expect(grid._theoreticalMaxChunkIndex).To.Equal((gs.X * gs.Y * gs.Z) - 1)
+		end)
+
+		it("should have _zeroBasedGridSize components all >= 0", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(8, 8, 8), 8)
+			expect(grid._zeroBasedGridSize.X).To.BeGreaterThanOrEqual(0)
+			expect(grid._zeroBasedGridSize.Y).To.BeGreaterThanOrEqual(0)
+			expect(grid._zeroBasedGridSize.Z).To.BeGreaterThanOrEqual(0)
+		end)
+
+		it("should have _theoreticalMaxChunkIndex >= 0", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(8, 8, 8), 8)
+			expect(grid._theoreticalMaxChunkIndex).To.BeGreaterThanOrEqual(0)
+		end)
+	end)
+
+	-- ================================================================
+	-- GetNeighboringChunksIndices
+	-- ================================================================
+	describe("GetNeighboringChunksIndices", function()
+		local grid
+
+		beforeEach(function()
+			grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8) -- 8x8x8 grid
+		end)
+
+		it("should return 6 neighbors for an interior chunk", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(#neighbors).To.Equal(6)
+		end)
+
+		it("should return 3 neighbors for the origin corner (0,0,0)", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.zero)
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(#neighbors).To.Equal(3)
+		end)
+
+		it("should return 3 neighbors for the far corner (7,7,7)", function()
+			local gs = grid.GridSize
+			local index = grid:GridPositionToChunkIndex(Vector3.new(gs.X - 1, gs.Y - 1, gs.Z - 1))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(#neighbors).To.Equal(3)
+		end)
+
+		it("should return 4 neighbors for an edge chunk (0,0,4)", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.new(0, 0, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(#neighbors).To.Equal(4)
+		end)
+
+		it("should return 5 neighbors for a face chunk (0,4,4)", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.new(0, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(#neighbors).To.Equal(5)
+		end)
+
+		it("should return the correct +X neighbor", function()
+			local pos = Vector3.new(3, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should return the correct -X neighbor", function()
+			local pos = Vector3.new(4, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(3, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should return the correct +Y neighbor", function()
+			local pos = Vector3.new(4, 3, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should return the correct -Y neighbor", function()
+			local pos = Vector3.new(4, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 3, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should return the correct +Z neighbor", function()
+			local pos = Vector3.new(4, 4, 3)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should return the correct -Z neighbor", function()
+			local pos = Vector3.new(4, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local expectedNeighbor = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 3))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, expectedNeighbor)).To.Exist()
+		end)
+
+		it("should not include -X neighbor for X=0 chunks", function()
+			local pos = Vector3.new(0, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local invalidNeighbor = grid:GridPositionToChunkIndex(Vector3.new(-1, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, invalidNeighbor)).To.BeNil()
+		end)
+
+		it("should not include +X neighbor for X=max chunks", function()
+			local gs = grid.GridSize
+			local pos = Vector3.new(gs.X - 1, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			-- The +X neighbor index would exceed _theoreticalMaxChunkIndex or wrap
+			for _, neighbor in neighbors do
+				local neighborPos = grid:ChunkIndexToGridPosition(neighbor)
+				expect(neighborPos.X).Never.To.Equal(gs.X)
+			end
+		end)
+
+		it("should return only valid indices within [0, _theoreticalMaxChunkIndex]", function()
+			local maxIndex = grid._theoreticalMaxChunkIndex
+			-- Test several positions including corners and edges
+			local testIndices = { 0, 1, 7, 63, 64, 255, 256, 511 }
+			for _, chunkIndex in testIndices do
+				local neighbors = grid:GetNeighboringChunksIndices(chunkIndex)
+				for _, neighbor in neighbors do
+					expect(neighbor).To.BeGreaterThanOrEqual(0)
+					expect(neighbor).To.BeLessThanOrEqual(maxIndex)
+				end
+			end
+		end)
+
+		it("should return unique indices (no duplicates)", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			local seen: { [number]: boolean } = {}
+			for _, neighbor in neighbors do
+				expect(seen[neighbor]).To.BeNil()
+				seen[neighbor] = true
+			end
+		end)
+
+		it("should not include the chunk itself in its neighbors", function()
+			local index = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			expect(table.find(neighbors, index)).To.BeNil()
+		end)
+
+		it("should produce neighbors that differ by exactly 1 grid step on one axis", function()
+			local pos = Vector3.new(4, 4, 4)
+			local index = grid:GridPositionToChunkIndex(pos)
+			local neighbors = grid:GetNeighboringChunksIndices(index)
+			for _, neighbor in neighbors do
+				local neighborPos = grid:ChunkIndexToGridPosition(neighbor)
+				local diff = neighborPos - pos
+				local absDiff = Vector3.new(math.abs(diff.X), math.abs(diff.Y), math.abs(diff.Z))
+				-- Exactly one axis should differ by 1, others should be 0
+				local totalDiff = absDiff.X + absDiff.Y + absDiff.Z
+				expect(totalDiff).To.Equal(1)
+			end
+		end)
+
+		it("should be symmetric: if A neighbors B, then B neighbors A", function()
+			local indexA = grid:GridPositionToChunkIndex(Vector3.new(4, 4, 4))
+			local neighborsA = grid:GetNeighboringChunksIndices(indexA)
+			for _, neighborIndex in neighborsA do
+				local neighborsB = grid:GetNeighboringChunksIndices(neighborIndex)
+				expect(table.find(neighborsB, indexA)).To.Exist()
+			end
+		end)
+
+		it("should work correctly with a non-cubic grid", function()
+			local ncGrid = Grid.new(Vector3.zero, Vector3.new(32, 16, 64), 8) -- 4x2x8
+			local interiorIndex = ncGrid:GridPositionToChunkIndex(Vector3.new(2, 1, 4))
+			local neighbors = ncGrid:GetNeighboringChunksIndices(interiorIndex)
+			-- All returned indices should be valid
+			for _, neighbor in neighbors do
+				expect(neighbor).To.BeGreaterThanOrEqual(0)
+				expect(neighbor).To.BeLessThanOrEqual(ncGrid._theoreticalMaxChunkIndex)
+			end
+		end)
+
+		it("should return 0 neighbors for a 1x1x1 grid (single chunk)", function()
+			-- In a 1x1x1 grid there is only 1 chunk; it has no valid neighbors
+			local tinyGrid = Grid.new(Vector3.zero, Vector3.new(8, 8, 8), 8)
+			local neighbors = tinyGrid:GetNeighboringChunksIndices(0)
+			-- All directional checks should fail bounds
+			expect(#neighbors).To.Equal(0)
+		end)
+
+		it("should work for every chunk in a small grid without error", function()
+			local smallGrid = Grid.new(Vector3.zero, Vector3.new(24, 24, 24), 8) -- 3x3x3
+			local total = smallGrid.GridSize.X * smallGrid.GridSize.Y * smallGrid.GridSize.Z
+			for i = 0, total - 1 do
+				local neighbors = smallGrid:GetNeighboringChunksIndices(i)
+				expect(#neighbors).To.BeGreaterThanOrEqual(0)
+				expect(#neighbors).To.BeLessThanOrEqual(6)
+			end
+		end)
+
+		it("should return between 0 and 6 neighbors for every chunk in the grid", function()
+			local gs = grid.GridSize
+			local total = gs.X * gs.Y * gs.Z
+			for i = 0, total - 1 do
+				local neighbors = grid:GetNeighboringChunksIndices(i)
+				expect(#neighbors).To.BeGreaterThanOrEqual(0)
+				expect(#neighbors).To.BeLessThanOrEqual(6)
+				-- All returned indices must be valid
+				for _, neighbor in neighbors do
+					expect(neighbor).To.BeGreaterThanOrEqual(0)
+					expect(neighbor).To.BeLessThanOrEqual(grid._theoreticalMaxChunkIndex)
+				end
+			end
+		end)
+	end)
+
+	-- ================================================================
+	-- _GetNearestChunkIndexAtPosition
+	-- ================================================================
+	describe("_GetNearestChunkIndexAtPosition", function()
+		it("should return 0 for a query at GenerationOrigin", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			expect(grid:_GetNearestChunkIndexAtPosition(grid.GenerationOrigin)).To.Equal(0)
+		end)
+
+		it("should return the same index as GetNearestChunkAtPosition's chunk", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gridPos = Vector3.new(3, 4, 5)
+			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
+			local worldPos = grid:GridPositionToWorldPosition(gridPos)
+			grid.Chunks[chunkIndex] = { ChunkIndex = chunkIndex, ChunkPosition = gridPos } :: any
+			local resultIndex = grid:_GetNearestChunkIndexAtPosition(worldPos)
+			local resultChunk = grid:GetNearestChunkAtPosition(worldPos)
+			expect(resultIndex).To.Equal(chunkIndex)
+			expect((resultChunk :: any).ChunkIndex).To.Equal(resultIndex)
+		end)
+
+		it("should agree with GridPositionToChunkIndex for all chunks in a small grid", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(32, 32, 32), 8)
+			local total = grid.GridSize.X * grid.GridSize.Y * grid.GridSize.Z
+			for i = 0, total - 1 do
+				local gridPos = grid:ChunkIndexToGridPosition(i)
+				local worldPos = grid:GridPositionToWorldPosition(gridPos)
+				expect(grid:_GetNearestChunkIndexAtPosition(worldPos)).To.Equal(i)
+			end
+		end)
+
+		it("should handle +1 stud offset correctly (rounds to nearest chunk)", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local gridPos = Vector3.new(4, 4, 4)
+			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
+			local worldPos = grid:GridPositionToWorldPosition(gridPos)
+			expect(grid:_GetNearestChunkIndexAtPosition(worldPos + Vector3.new(1, 1, 1))).To.Equal(chunkIndex)
+		end)
+
+		it("should clamp to grid bounds for positions far outside the grid", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local farPos = Vector3.new(99999, 99999, 99999)
+			local index = grid:_GetNearestChunkIndexAtPosition(farPos)
+			-- Should clamp to the maximum valid index
+			expect(index).To.BeGreaterThanOrEqual(0)
+			expect(index).To.BeLessThanOrEqual(grid._theoreticalMaxChunkIndex)
+		end)
+
+		it("should clamp to grid bounds for large negative positions", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(64, 64, 64), 8)
+			local farNegPos = Vector3.new(-99999, -99999, -99999)
+			local index = grid:_GetNearestChunkIndexAtPosition(farNegPos)
+			expect(index).To.Equal(0)
+		end)
+
+		it("should work with a non-zero center grid", function()
+			local grid = Grid.new(Vector3.new(500, 500, 500), Vector3.new(64, 64, 64), 8)
+			local gridPos = Vector3.new(2, 3, 4)
+			local chunkIndex = grid:GridPositionToChunkIndex(gridPos)
+			local worldPos = grid:GridPositionToWorldPosition(gridPos)
+			expect(grid:_GetNearestChunkIndexAtPosition(worldPos)).To.Equal(chunkIndex)
+		end)
+
+		it("should return an integer for all valid world positions", function()
+			local grid = Grid.new(Vector3.zero, Vector3.new(32, 32, 32), 8)
+			local gs = grid.GridSize
+			for x = 0, gs.X - 1 do
+				for y = 0, gs.Y - 1 do
+					for z = 0, gs.Z - 1 do
+						local worldPos = grid:GridPositionToWorldPosition(Vector3.new(x, y, z))
+						local index = grid:_GetNearestChunkIndexAtPosition(worldPos)
+						expect(index % 1).To.Equal(0)
+					end
+				end
+			end
 		end)
 	end)
 end)
