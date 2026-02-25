@@ -34,6 +34,13 @@ export type GenerateChunkResult = {
 	ChunkSeed: number,
 }
 
+export type PeekChunkResult = {
+	ChunkType: string, -- "Air" | "Surface" | "Buried"
+	MinHeight: number?, -- Min terrain elevation relative to sea level (Surface only)
+	MaxHeight: number?, -- Max terrain elevation relative to sea level (Surface only)
+	ChunkSeed: number,
+}
+
 --- Variables ---
 local RESOLUTION = 4
 local INV_RESOLUTION = 1 / RESOLUTION
@@ -809,6 +816,192 @@ function PlanetGenerator._ComputeChunkData(
 		return "Air", chunkSeed, false, nil
 	end
 	return "Surface", chunkSeed, true, region
+end
+
+function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): PeekChunkResult
+	-- Inline grid position from chunk index
+	local sizeYZ = self._sizeYZ
+	local sizeZ = self._sizeZ
+	local remainder = chunkIndex % sizeYZ
+	local gx = chunkIndex // sizeYZ
+	local gy = remainder // sizeZ
+	local gz = remainder % sizeZ
+
+	local chunkSeed = tonumber(`{self.MasterSeed}{gx}{gy}{gz}`) :: number
+
+	-- Chunk AABB in world space (center is origin)
+	local halfWorld = self.GridWorldSize.X / 2
+	local cs = self.ChunkSize
+	local x0 = -halfWorld + gx * cs
+	local y0 = -halfWorld + gy * cs
+	local z0 = -halfWorld + gz * cs
+	local x1 = x0 + cs
+	local y1 = y0 + cs
+	local z1 = z0 + cs
+
+	-- Min distance from origin to AABB (clamp origin into box)
+	local clX = mathClamp(0, x0, x1)
+	local clY = mathClamp(0, y0, y1)
+	local clZ = mathClamp(0, z0, z1)
+	local minDist = mathSqrt(clX * clX + clY * clY + clZ * clZ)
+
+	-- Max distance from origin to AABB (farthest corner)
+	local fX = if math.abs(x0) > math.abs(x1) then x0 else x1
+	local fY = if math.abs(y0) > math.abs(y1) then y0 else y1
+	local fZ = if math.abs(z0) > math.abs(z1) then z0 else z1
+	local maxDist = mathSqrt(fX * fX + fY * fY + fZ * fZ)
+
+	-- Fast path: entirely outside the outer bound -> Air
+	if minDist > self._outerBound then
+		return { ChunkType = "Air", ChunkSeed = chunkSeed }
+	end
+
+	-- Fast path: entirely inside the inner bound -> Buried
+	if maxDist <= self._innerBound then
+		return { ChunkType = "Buried", ChunkSeed = chunkSeed }
+	end
+
+	-- Sample surface radius at chunk center + 8 corners (9 lookups, zero allocation)
+	local gridSR = self._gridSR
+	local minSR = math.huge
+	local maxSR = -math.huge
+	local half = cs * 0.5
+	local d, invD, sr
+
+	-- Center
+	local mx, my, mz = x0 + half, y0 + half, z0 + half
+	d = mathSqrt(mx * mx + my * my + mz * mz)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, mx * invD, my * invD, mz * invD)
+		minSR = sr
+		maxSR = sr
+	end
+
+	-- Corner (x0, y0, z0)
+	d = mathSqrt(x0 * x0 + y0 * y0 + z0 * z0)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x0 * invD, y0 * invD, z0 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x1, y0, z0)
+	d = mathSqrt(x1 * x1 + y0 * y0 + z0 * z0)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x1 * invD, y0 * invD, z0 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x0, y1, z0)
+	d = mathSqrt(x0 * x0 + y1 * y1 + z0 * z0)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x0 * invD, y1 * invD, z0 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x0, y0, z1)
+	d = mathSqrt(x0 * x0 + y0 * y0 + z1 * z1)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x0 * invD, y0 * invD, z1 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x1, y1, z0)
+	d = mathSqrt(x1 * x1 + y1 * y1 + z0 * z0)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x1 * invD, y1 * invD, z0 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x1, y0, z1)
+	d = mathSqrt(x1 * x1 + y0 * y0 + z1 * z1)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x1 * invD, y0 * invD, z1 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x0, y1, z1)
+	d = mathSqrt(x0 * x0 + y1 * y1 + z1 * z1)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x0 * invD, y1 * invD, z1 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Corner (x1, y1, z1)
+	d = mathSqrt(x1 * x1 + y1 * y1 + z1 * z1)
+	if d > 0.001 then
+		invD = 1 / d
+		sr = surfaceRadiusLookup(gridSR, x1 * invD, y1 * invD, z1 * invD)
+		if sr < minSR then
+			minSR = sr
+		end
+		if sr > maxSR then
+			maxSR = sr
+		end
+	end
+
+	-- Effective visible boundary: terrain or sea level, whichever is higher
+	local effectiveMax = math.max(maxSR, SEA_LEVEL)
+
+	-- Air: entire chunk is above the visible surface
+	if minDist > effectiveMax then
+		return { ChunkType = "Air", ChunkSeed = chunkSeed }
+	end
+
+	-- Buried: entire chunk is below the terrain surface
+	if maxDist < minSR then
+		return { ChunkType = "Buried", ChunkSeed = chunkSeed }
+	end
+
+	-- Surface: chunk intersects the visible surface shell
+	return {
+		ChunkType = "Surface",
+		MinHeight = minSR - SEA_LEVEL,
+		MaxHeight = maxSR - SEA_LEVEL,
+		ChunkSeed = chunkSeed,
+	}
 end
 
 function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult

@@ -52,20 +52,33 @@ local chunkIndices = {
 	-- planet:GridPositionToChunkIndex(Vector3.new(129, 258, 129)),
 }
 for x = 129, 0, -1 do
-	for y = 257, 200, -1 do
+	for y = 257, 257, -1 do
 		for z = 129, 0, -1 do
 			table.insert(chunkIndices, planet:GridPositionToChunkIndex(Vector3.new(x, y, z)))
 		end
 	end
 end
+print(#chunkIndices)
 local s = os.clock()
 for _, chunkIndex in chunkIndices do
-	planet:GenerateChunk(chunkIndex)
-	if _ % 8 == 0 then
-		task.wait()
-	end
+	-- planet:GenerateChunk(chunkIndex)
+	planet:PeekChunk(chunkIndex)
+	-- if _ % 8 == 0 then
+	-- 	task.wait()
+	-- end
 end
 print(os.clock() - s)
+
+-- local chunkIndex = planet:GridPositionToChunkIndex(Vector3.new(129, 257, 129))
+-- local s = os.clock()
+-- local data = planet:PeekChunk(chunkIndex)
+-- print(os.clock() - s, data)
+
+-- TODO: need to limit the master seed due to number precision:
+-- local t = tonumber(tostring(os.time()):sub(1, 8))
+-- print(t)
+-- print(tonumber(`{t}{512}{512}{512}`))
+
 -- local s = os.clock()
 -- scheduler:GenerateChunks(chunkIndices)
 -- print(`[Server] Generated {#chunkIndices} chunks in parallel in {string.format("%.6f", os.clock() - s)}s`)
