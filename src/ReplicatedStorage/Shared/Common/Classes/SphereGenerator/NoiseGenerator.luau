@@ -17,6 +17,7 @@ type ChannelOffset = {
 
 --- Variables ---
 local CHANNEL_COUNT = 10
+local mathNoise = math.noise
 
 --- Noise Generator Class ---
 local NoiseGenerator = {}
@@ -63,13 +64,15 @@ function NoiseGenerator.FBM3D(
 	persistence: number,
 	channel: number?
 ): number
+	local offset = self._offsets[channel or 1]
+	local ox, oy, oz = offset.X, offset.Y, offset.Z
 	local total = 0
 	local amplitude = 1
 	local frequency = 1
 	local maxValue = 0
 
 	for _ = 1, octaves do
-		total += self:Sample3D(x * frequency, y * frequency, z * frequency, channel) * amplitude
+		total += mathNoise(x * frequency + ox, y * frequency + oy, z * frequency + oz) * amplitude
 		maxValue += amplitude
 		amplitude *= persistence
 		frequency *= lacunarity

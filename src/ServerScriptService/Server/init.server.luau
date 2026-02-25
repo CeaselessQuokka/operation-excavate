@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 --- Imports ---
 local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
 local Knit = require(ReplicatedStorage.Packages.Knit)
+local ParallelChunkScheduler = require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.ParallelChunkScheduler)
 local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.PlanetGenerator)
 
 --- Load Services ---
@@ -40,26 +41,35 @@ local planetRadius = math.ceil(planet.MaxSurfaceRadius / 8) * 8
 print(os.clock() - s, planet.MaxSurfaceRadius, planetRadius)
 local s = os.clock()
 local planetGrid = Infinigrid.new(planet.Center, planet.GridWorldSize, planet.ChunkSize)
-print(os.clock() - s)
--- local player = Players:WaitForChild("CeaselessQuokka") :: Player
--- local character = player.Character or player.CharacterAdded:Wait()
--- print(planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position))
--- task.wait(3)
-task.wait(1)
+print(os.clock() - s, planet.Center, planet.GridWorldSize, planet.ChunkSize)
+
+local scheduler = ParallelChunkScheduler.new()
+scheduler:SetPlanet(planet)
+
+task.wait(2)
+
+local chunkIndices = {
+	-- planet:GridPositionToChunkIndex(Vector3.new(129, 258, 129)),
+}
+for x = 129, 0, -1 do
+	for y = 257, 200, -1 do
+		for z = 129, 0, -1 do
+			table.insert(chunkIndices, planet:GridPositionToChunkIndex(Vector3.new(x, y, z)))
+		end
+	end
+end
 local s = os.clock()
-planet:GenerateChunk(planet:GridPositionToChunkIndex(Vector3.new(129, 258, 129)))
-print(os.clock() - s)
-task.wait(1)
-local s = os.clock()
-planet:GenerateChunk(planet:GridPositionToChunkIndex(Vector3.new(129, 257, 129)))
-print(os.clock() - s)
-task.wait(1)
-local s = os.clock()
-planet:GenerateChunk(planet:GridPositionToChunkIndex(Vector3.new(129, 256, 129)))
+for _, chunkIndex in chunkIndices do
+	planet:GenerateChunk(chunkIndex)
+	if _ % 8 == 0 then
+		task.wait()
+	end
+end
 print(os.clock() - s)
 -- local s = os.clock()
--- local res = planet:GenerateChunk(0)
--- print(os.clock() - s)
+-- scheduler:GenerateChunks(chunkIndices)
+-- print(`[Server] Generated {#chunkIndices} chunks in parallel in {string.format("%.6f", os.clock() - s)}s`)
+-- local s = os.clock()
 
 -- Run tests.
 -- local Litmus = require(ReplicatedStorage.Shared.Litmus)

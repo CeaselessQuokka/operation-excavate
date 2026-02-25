@@ -36,6 +36,7 @@ export type GenerateChunkResult = {
 
 --- Variables ---
 local RESOLUTION = 4
+local INV_RESOLUTION = 1 / RESOLUTION
 local DEEP_STRIDE = 4
 
 local RADIUS = 8192
@@ -499,13 +500,14 @@ export type PlanetGenerator = typeof(setmetatable(
 		_innerBound: number,
 		_sizeYZ: number,
 		_sizeZ: number,
+		Resolution: number,
 		_reuseMats: { { { Enum.Material } } },
 		_reuseOccs: { { { number } } },
 	},
 	PlanetGenerator
 ))
 
-function PlanetGenerator.new(masterSeed: number, chunkSize: number): PlanetGenerator
+function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boolean?): PlanetGenerator
 	-- Align chunk size to 8 to match Infinigrid's alignment behavior
 	local alignedChunkSize = math.ceil(chunkSize / 8) * 8
 	local voxelsPerAxis = alignedChunkSize / RESOLUTION
@@ -522,7 +524,9 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number): PlanetGener
 	local globalMinSR = math.huge
 	local globalMaxSR = -math.huge
 
-	print(`[PlanetGenerator] Precomputing surface grid ({GRID_LAT + 1}x{GRID_LON})...`)
+	if not quiet then
+		print(`[PlanetGenerator] Precomputing surface grid ({GRID_LAT + 1}x{GRID_LON})...`)
+	end
 	local gridStart = os.clock()
 	for latI = 0, GRID_LAT do
 		local theta = PI * latI / GRID_LAT
@@ -555,14 +559,18 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number): PlanetGener
 		gridSR[latI] = srRow
 		gridBiomeTable[latI] = biomeRow
 
-		if latI % 32 == 0 then
+		-- Yield periodically to avoid freezing the main thread during grid precomputation.
+		-- Skipped in worker mode (quiet) since workers run in parallel and cannot yield.
+		if not quiet and latI % 32 == 0 then
 			task.wait()
 		end
 	end
-	print(
-		`[PlanetGenerator] Surface grid computed in {string.format("%.1f", os.clock() - gridStart)}s`
-			.. ` (range: {string.format("%.0f", globalMinSR)} to {string.format("%.0f", globalMaxSR)})`
-	)
+	if not quiet then
+		print(
+			`[PlanetGenerator] Surface grid computed in {string.format("%.1f", os.clock() - gridStart)}s`
+				.. ` (range: {string.format("%.0f", globalMinSR)} to {string.format("%.0f", globalMaxSR)})`
+		)
+	end
 
 	local outerBound = math.max(globalMaxSR, SEA_LEVEL) + RESOLUTION * 2
 	local innerBound = globalMinSR - SUBSURFACE_DEPTH - RESOLUTION * 2
@@ -602,6 +610,7 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number): PlanetGener
 		GridSize = gridSize,
 		GridWorldSize = gridWorldSize,
 		GenerationOrigin = generationOrigin,
+		Resolution = RESOLUTION,
 		_voxelsPerAxis = voxelsPerAxis,
 		_deepStride = deepStride,
 		_noise = noise,
@@ -639,16 +648,27 @@ function PlanetGenerator.GetChunkSeed(self: PlanetGenerator, chunkIndex: number)
 	return tonumber(`{self.MasterSeed}{gridPos.X}{gridPos.Y}{gridPos.Z}`) :: number
 end
 
-function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult
-	local gridPos = self:ChunkIndexToGridPosition(chunkIndex)
-	local chunkSeed = self:GetChunkSeed(chunkIndex)
+function PlanetGenerator._ComputeChunkData(
+	self: PlanetGenerator,
+	chunkIndex: number
+): (string, number, boolean, Region3?)
+	-- Inline grid position computation (avoids Vector3 creation from ChunkIndexToGridPosition)
+	local sizeYZ = self._sizeYZ
+	local sizeZ = self._sizeZ
+	local remainder = chunkIndex % sizeYZ
+	local gx = chunkIndex // sizeYZ
+	local gy = remainder // sizeZ
+	local gz = remainder % sizeZ
+
+	-- Inline chunk seed (avoids GetChunkSeed re-deriving grid position)
+	local chunkSeed = tonumber(`{self.MasterSeed}{gx}{gy}{gz}`) :: number
 
 	-- Min corner in world space (Center is zero so GenerationOrigin - ChunkSize/2 = -GridWorldSize/2)
 	local halfWorld = self.GridWorldSize.X / 2
 	local cs = self.ChunkSize
-	local cx = -halfWorld + gridPos.X * cs
-	local cy = -halfWorld + gridPos.Y * cs
-	local cz = -halfWorld + gridPos.Z * cs
+	local cx = -halfWorld + gx * cs
+	local cy = -halfWorld + gy * cs
+	local cz = -halfWorld + gz * cs
 
 	local vpa = self._voxelsPerAxis
 	local nOff = self._nOff
@@ -666,10 +686,9 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 
 	-- Quick rejection: entirely outside the sphere
 	if cd - halfDiag > outerBound then
-		return { ChunkType = "Air", ChunkSeed = chunkSeed }
+		return "Air", chunkSeed, false, nil
 	end
 
-	local terrain = workspace.Terrain
 	local region = Region3.new(Vector3.new(cx, cy, cz), Vector3.new(cx + cs, cy + cs, cz + cs))
 
 	-- Deep interior: stride-sampled generation (far below the surface)
@@ -677,15 +696,9 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 		local mats = self._reuseMats
 		local occs = self._reuseOccs
 
-		-- All deep voxels are solid
-		for ix = 1, vpa do
-			for iy = 1, vpa do
-				for iz = 1, vpa do
-					occs[ix][iy][iz] = 1
-				end
-			end
-		end
-
+		-- Single pass: fill both materials and occupancy together.
+		-- The block-fill inner loops visit every (bx,by,bz) so we set occs here
+		-- instead of a separate 4096-entry loop.
 		local stride = self._deepStride
 		local deepMid = (stride - 1) * 0.5
 		for sx = 1, vpa, stride do
@@ -703,10 +716,13 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 
 					for bx = sx, exEnd do
 						local matsX = mats[bx]
+						local occsX = occs[bx]
 						for by = sy, eyEnd do
 							local matsXY = matsX[by]
+							local occsXY = occsX[by]
 							for bz = sz, ezEnd do
 								matsXY[bz] = mat
+								occsXY[bz] = 1
 							end
 						end
 					end
@@ -714,8 +730,7 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 			end
 		end
 
-		terrain:WriteVoxels(region, RESOLUTION, mats, occs)
-		return { ChunkType = "Deep", ChunkSeed = chunkSeed }
+		return "Deep", chunkSeed, true, region
 	end
 
 	-- Surface shell: full-resolution generation
@@ -733,13 +748,18 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 		quickAirThreshold = outerBound
 	end
 
+	-- Hoist wx/wy computation and precompute partial squared sums.
+	-- wx depends only on ix (outer), wy only on iy (middle) — no need to recompute in innermost loop.
+	local invRes = INV_RESOLUTION
 	for ix = 1, vpa do
+		local wx = cx + (ix - 0.5) * RESOLUTION
+		local wx2 = wx * wx
 		for iy = 1, vpa do
+			local wy = cy + (iy - 0.5) * RESOLUTION
+			local wx2wy2 = wx2 + wy * wy
 			for iz = 1, vpa do
-				local wx = cx + (ix - 0.5) * RESOLUTION
-				local wy = cy + (iy - 0.5) * RESOLUTION
 				local wz = cz + (iz - 0.5) * RESOLUTION
-				local dist = mathSqrt(wx * wx + wy * wy + wz * wz)
+				local dist = mathSqrt(wx2wy2 + wz * wz)
 
 				-- Fast path: definitely deep underground
 				if dist < innerBound then
@@ -769,12 +789,12 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 
 				if dist <= sr then
 					local depth = sr - dist
-					occs[ix][iy][iz] = mathClamp(0.5 + depth / RESOLUTION, 0, 1)
+					occs[ix][iy][iz] = mathClamp(0.5 + depth * invRes, 0, 1)
 					mats[ix][iy][iz] = getMaterial(nOff, depth, sr, dist, biome, wx, wy, wz)
 					hasContent = true
 				elseif dist <= SEA_LEVEL then
 					local wd = SEA_LEVEL - dist
-					occs[ix][iy][iz] = mathClamp(0.5 + wd / RESOLUTION, 0, 1)
+					occs[ix][iy][iz] = mathClamp(0.5 + wd * invRes, 0, 1)
 					mats[ix][iy][iz] = Enum.Material.Water
 					hasContent = true
 				else
@@ -785,11 +805,18 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 		end
 	end
 
-	if hasContent then
-		terrain:WriteVoxels(region, RESOLUTION, mats, occs)
+	if not hasContent then
+		return "Air", chunkSeed, false, nil
 	end
+	return "Surface", chunkSeed, true, region
+end
 
-	return { ChunkType = if hasContent then "Surface" else "Air", ChunkSeed = chunkSeed }
+function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult
+	local chunkType, chunkSeed, hasContent, region = self:_ComputeChunkData(chunkIndex)
+	if hasContent then
+		workspace.Terrain:WriteVoxels(region :: Region3, RESOLUTION, self._reuseMats, self._reuseOccs)
+	end
+	return { ChunkType = chunkType, ChunkSeed = chunkSeed }
 end
 
 return table.freeze(PlanetGenerator)
