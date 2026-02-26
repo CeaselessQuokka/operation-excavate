@@ -1,7 +1,7 @@
 --!strict
--- do
--- 	return
--- end
+do
+	return
+end
 -- Test code
 for t = 3, 1, -1 do
 	print(t)

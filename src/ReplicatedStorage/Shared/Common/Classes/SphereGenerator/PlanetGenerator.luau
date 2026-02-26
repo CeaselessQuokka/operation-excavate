@@ -31,13 +31,16 @@ type ChannelOffset = {
 
 export type GenerateChunkResult = {
 	ChunkType: string, -- "Air" | "Deep" | "Surface"
+	IsWater: boolean, -- Whether this chunk contains any water voxels
 	ChunkSeed: number,
 }
 
 export type PeekChunkResult = {
 	ChunkType: string, -- "Air" | "Surface" | "Buried"
+	IsWater: boolean, -- Whether this chunk contains (or would contain) water voxels
 	MinHeight: number?, -- Min terrain elevation relative to sea level (Surface only)
 	MaxHeight: number?, -- Max terrain elevation relative to sea level (Surface only)
+	Generated: boolean, -- Whether GenerateChunk has been called for this chunk
 	ChunkSeed: number,
 }
 
@@ -510,6 +513,7 @@ export type PlanetGenerator = typeof(setmetatable(
 		Resolution: number,
 		_reuseMats: { { { Enum.Material } } },
 		_reuseOccs: { { { number } } },
+		_generated: { [number]: true },
 	},
 	PlanetGenerator
 ))
@@ -630,6 +634,7 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 		_sizeZ = gridSpaceSize,
 		_reuseMats = reuseMats,
 		_reuseOccs = reuseOccs,
+		_generated = {},
 	}, PlanetGenerator)
 
 	return self
@@ -851,14 +856,16 @@ function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): P
 	local fZ = if math.abs(z0) > math.abs(z1) then z0 else z1
 	local maxDist = mathSqrt(fX * fX + fY * fY + fZ * fZ)
 
+	local generated = self._generated[chunkIndex] == true
+
 	-- Fast path: entirely outside the outer bound -> Air
 	if minDist > self._outerBound then
-		return { ChunkType = "Air", ChunkSeed = chunkSeed }
+		return { ChunkType = "Air", IsWater = false, Generated = generated, ChunkSeed = chunkSeed }
 	end
 
 	-- Fast path: entirely inside the inner bound -> Buried
 	if maxDist <= self._innerBound then
-		return { ChunkType = "Buried", ChunkSeed = chunkSeed }
+		return { ChunkType = "Buried", IsWater = false, Generated = generated, ChunkSeed = chunkSeed }
 	end
 
 	-- Sample surface radius at chunk center + 8 corners (9 lookups, zero allocation)
@@ -987,29 +994,78 @@ function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): P
 
 	-- Air: entire chunk is above the visible surface
 	if minDist > effectiveMax then
-		return { ChunkType = "Air", ChunkSeed = chunkSeed }
+		return { ChunkType = "Air", IsWater = false, Generated = generated, ChunkSeed = chunkSeed }
 	end
 
-	-- Buried: entire chunk is below the terrain surface
+	-- Buried: entire chunk is below the terrain surface.
+	-- Exception: if terrain is below sea level in any sampled direction (water column),
+	-- and the chunk overlaps that water region, force it to Surface so water renders.
 	if maxDist < minSR then
-		return { ChunkType = "Buried", ChunkSeed = chunkSeed }
+		if minSR < SEA_LEVEL and maxDist > minSR - SUBSURFACE_DEPTH then
+			-- Chunk is under ocean floor but close enough that water may be adjacent;
+			-- still buried (water is above terrain, not below). True buried.
+			do
+			end
+		end
+		return { ChunkType = "Buried", IsWater = false, Generated = generated, ChunkSeed = chunkSeed }
+	end
+
+	-- Determine if this chunk contains water: terrain is below sea level somewhere
+	-- in the chunk's angular footprint AND the chunk's radial range reaches the water column.
+	local isWater = minSR < SEA_LEVEL and minDist <= SEA_LEVEL
+
+	-- Water check: if terrain is below sea level and the chunk sits between terrain and
+	-- sea level (entirely within the water column), force Surface so water is rendered.
+	-- This catches chunks that are fully submerged but contain no solid terrain.
+	if minDist > maxSR and minDist <= SEA_LEVEL and maxSR < SEA_LEVEL then
+		return {
+			ChunkType = "Surface",
+			IsWater = true,
+			MinHeight = minSR - SEA_LEVEL,
+			MaxHeight = maxSR - SEA_LEVEL,
+			Generated = generated,
+			ChunkSeed = chunkSeed,
+		}
 	end
 
 	-- Surface: chunk intersects the visible surface shell
 	return {
 		ChunkType = "Surface",
+		IsWater = isWater,
 		MinHeight = minSR - SEA_LEVEL,
 		MaxHeight = maxSR - SEA_LEVEL,
+		Generated = generated,
 		ChunkSeed = chunkSeed,
 	}
 end
 
 function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult
 	local chunkType, chunkSeed, hasContent, region = self:_ComputeChunkData(chunkIndex)
+	local isWater = false
 	if hasContent then
+		-- Scan for water voxels before writing
+		local mats = self._reuseMats
+		local vpa = self._voxelsPerAxis
+		for ix = 1, vpa do
+			for iy = 1, vpa do
+				for iz = 1, vpa do
+					if mats[ix][iy][iz] == Enum.Material.Water then
+						isWater = true
+						break
+					end
+				end
+				if isWater then
+					break
+				end
+			end
+			if isWater then
+				break
+			end
+		end
 		workspace.Terrain:WriteVoxels(region :: Region3, RESOLUTION, self._reuseMats, self._reuseOccs)
 	end
-	return { ChunkType = chunkType, ChunkSeed = chunkSeed }
+	self._generated[chunkIndex] = true
+	return { ChunkType = chunkType, IsWater = isWater, ChunkSeed = chunkSeed }
 end
 
 return table.freeze(PlanetGenerator)
