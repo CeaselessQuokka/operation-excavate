@@ -19,8 +19,8 @@ local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
 export type ChunkIndex = number
-export type BaseChunkState<ChunkState> = {
-	Grid: Grid<ChunkState>, -- Reference to the parent grid of this chunk.
+export type BaseChunkState = {
+	Grid: Grid<any>, -- Reference to the parent grid of this chunk.
 	ChunkIndex: ChunkIndex, -- The index of the chunk in the grid. Calculated as (x + y * gridSizeX + z * gridSizeX * gridSizeY).
 
 	-- TODO: For ChunkState (future type note: this may different from client to server, so I need to handle that gracefully somehow; probably just using the new type passing with `fn<<TypeHere>>(...)`)
@@ -63,21 +63,22 @@ end
 local Grid = {}
 Grid.__index = Grid
 
-export type Grid<ChunkState> = typeof(setmetatable(
-	{} :: {
+export type Grid<ChunkState> = setmetatable<
+	{
+
 		Center: Vector3, -- World-space position of the grid's center.
 		GenerationOrigin: Vector3, -- World-space position of the grid's generation origin.
 		ChunkSize: number, -- Size of each chunk in studs (cubed).
 		GridSize: Vector3, -- Size of the grid in grid space. Calculated as GridWorldSize / ChunkSize.
 		GridWorldSize: Vector3, -- Optional maximum size of the grid in studs. If nil, the grid can grow to DEFAULT_MAX_GRID_SIZE.
-		Chunks: { [ChunkIndex]: BaseChunkState<ChunkState> }, -- Table of chunks (can have holes) indexed by their chunk index. Chunks are stored in XYZ order exactly like terrain.
+		Chunks: { [ChunkIndex]: BaseChunkState & ChunkState }, -- Table of chunks (can have holes) indexed by their chunk index. Chunks are stored in XYZ order exactly like terrain.
 		_zeroBasedGridSize: Vector3, -- Equal to GridSize - Vector3.one. Used for bounds checking when clamping chunk indices.
 		_theoreticalMaxChunkIndex: number, -- Used for bounds checking when clamping chunk indices.
 
-		OnChunkGenerated: Signal.Signal<BaseChunkState<ChunkState>>,
+		OnChunkGenerated: Signal.Signal<BaseChunkState & ChunkState>,
 	},
-	Grid
-))
+	typeof(Grid)
+>
 function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSize: number?): Grid<ChunkState>
 	chunkSize = chunkSize or DEFAULT_CHUNK_SIZE
 	local alignedChunkSize = math.ceil(chunkSize / 8) * 8 -- Align chunk size to terrain resolution (8x8x8) to avoid potential ReadVoxels instability.
@@ -114,7 +115,7 @@ function Grid.new<ChunkState>(center: Vector3, gridWorldSize: Vector3?, chunkSiz
 	return grid
 end
 
-function Grid.GetNeighborIndices<ChunkState>(self: Grid<ChunkState>, chunkIndex: ChunkIndex): { ChunkIndex }
+function Grid.GetNeighborIndices(self: Grid<any>, chunkIndex: ChunkIndex): { ChunkIndex }
 	local neighborIndex = 1
 	local neighboringChunks: { ChunkIndex } = table.create(6) :: any
 	local gridSize = self.GridSize
@@ -147,7 +148,7 @@ function Grid.GetNeighborIndices<ChunkState>(self: Grid<ChunkState>, chunkIndex:
 	return neighboringChunks
 end
 
-function Grid.GetNearestChunkAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): BaseChunkState<ChunkState>?
+function Grid.GetNearestChunkAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): (BaseChunkState & ChunkState)?
 	local chunkGridPosition = (position - self.GenerationOrigin) / self.ChunkSize
 	local zeroBasedGridSize = self._zeroBasedGridSize
 	local sizeZ = self.GridSize.Z
@@ -157,7 +158,7 @@ function Grid.GetNearestChunkAtPosition<ChunkState>(self: Grid<ChunkState>, posi
 	return self.Chunks[(x * self.GridSize.Y * sizeZ) + (y * sizeZ) + z]
 end
 
-function Grid._GetNearestChunkIndexAtPosition<ChunkState>(self: Grid<ChunkState>, position: Vector3): number
+function Grid._GetNearestChunkIndexAtPosition(self: Grid<any>, position: Vector3): number
 	local chunkGridPosition = (position - self.GenerationOrigin) / self.ChunkSize
 	local zeroBasedGridSize = self._zeroBasedGridSize
 	local sizeZ = self.GridSize.Z

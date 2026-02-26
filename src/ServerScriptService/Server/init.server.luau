@@ -2,6 +2,8 @@
 --- Services ---
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
 
 --- Imports ---
 local Knit = require(ReplicatedStorage.Packages.Knit)
@@ -26,18 +28,18 @@ end
 --- Start Knit ---
 Knit.Start():expect()
 
-for t = 3, 1, -1 do
+for t = if RunService:IsStudio() then 1 else 10, 1, -1 do
 	print(`[Server] Starting in {t}...`)
 	task.wait(1)
 end
 
 local planet = PlanetGenerator.new(67, 64)
-local planetGrid = Infinigrid.new(planet.Center, planet.GridWorldSize, planet.ChunkSize)
+local planetGrid = planet.Grid
 
 local sortedOffsets: { Vector3 } = {}
-for x = -4, 4 do
-	for y = -4, 4 do
-		for z = -4, 4 do
+for x = -7, 7 do
+	for y = -2, 2 do
+		for z = -7, 7 do
 			table.insert(sortedOffsets, Vector3.new(x, y, z))
 		end
 	end
@@ -63,11 +65,40 @@ local function GenerateChunksAroundGridPosition(gridPosition: Vector3)
 	print(os.clock() - s)
 end
 
+local orientation = ServerStorage.AlignOrientation:Clone() :: AlignOrientation
+
 local lastPosition = nil
+local character: Model
 while true do
-	local character = ((Players :: any).CeaselessQuokka :: Player).Character :: Model
+	character = Players:FindFirstChild("CeaselessQuokka") :: any
+	if character then
+		character = (character :: any).Character
+	end
+	if not character then
+		task.wait(1)
+		continue
+	end
+
+	local character = character :: Model
+	local pp = character.PrimaryPart :: BasePart
+	orientation.Attachment0 = pp.RootAttachment
+	orientation.Parent = pp
 	local currentPosition = character:GetPivot().Position
-	if lastPosition and (currentPosition - lastPosition).Magnitude < 32 then
+
+	local normal = (currentPosition).Unit
+	local zDir = character:GetPivot().ZVector
+	local xDir = normal:Cross(zDir)
+	orientation.CFrame = CFrame.fromMatrix(Vector3.zero, xDir, normal)
+	-- print(character.Humanoid.MoveDirection)
+
+	-- local ori = CFrame.fromMatrix(Vector3.zero, xDir, normal)
+	-- local y, x, z = ori:ToEulerAnglesYXZ()
+	-- local rori = pp.Orientation
+	-- local angles = CFrame.Angles(y, x, 0)
+	-- -- print(math.deg(y), math.deg(x), math.deg(z))
+	-- orientation.CFrame = angles
+
+	if lastPosition and (currentPosition - lastPosition).Magnitude < 24 then
 		task.wait(0.125)
 		continue
 	end

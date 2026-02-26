@@ -1,6 +1,7 @@
 --[[
 	Deterministic sphere terrain generator with a chunk-based API.
 	Designed to produce terrain compatible with Infinigrid's zero-based chunk indexing.
+	Uses Infinigrid internally for all grid/index/position math.
 
 	Usage:
 		local planet = PlanetGenerator.new(masterSeed, chunkSize)
@@ -8,15 +9,16 @@
 
 	The constructor yields during surface grid precomputation.
 	ChunkSize is in studs and will be aligned to multiples of 8 to match Infinigrid.
-	Use the exposed GridWorldSize and GridSize to create a matching Infinigrid:
+	The internal Infinigrid is exposed as planet.Grid:
 
-		local grid = Grid.new(planet.Center, planet.GridWorldSize, planet.ChunkSize)
+		planet.Grid -- direct access to the Infinigrid instance
 ]]
 
 --!strict
 
 --- Imports ---
 local Biomes = require(script.Parent.Biomes)
+local Infinigrid = require(script.Parent.Parent.Infinigrid)
 local NoiseGenerator = require(script.Parent.NoiseGenerator)
 
 --- Types ---
@@ -491,15 +493,11 @@ PlanetGenerator.__index = PlanetGenerator
 export type PlanetGenerator = typeof(setmetatable(
 	{} :: {
 		MasterSeed: number,
-		ChunkSize: number, -- In studs, aligned to multiples of 8.
-		Center: Vector3,
+		Grid: Infinigrid.Grid<any>, -- Internal Infinigrid instance for all grid/index/position math.
 		Radius: number, -- The base radius constant (terrain can extend beyond this).
 		SeaLevel: number,
 		MaxSurfaceRadius: number, -- Actual maximum distance from center to any terrain surface point. Use this as the true bounding radius.
 		MinSurfaceRadius: number, -- Actual minimum distance from center to any terrain surface point (deepest ocean trench).
-		GridSize: Vector3, -- Number of chunks per axis (uniform for sphere).
-		GridWorldSize: Vector3, -- Total world size in studs (uniform, aligned to 8).
-		GenerationOrigin: Vector3, -- World-space center of grid position (0,0,0).
 		_voxelsPerAxis: number,
 		_deepStride: number,
 		_noise: NoiseGen,
@@ -508,8 +506,8 @@ export type PlanetGenerator = typeof(setmetatable(
 		_gridBiome: { [number]: { [number]: Biome } },
 		_outerBound: number,
 		_innerBound: number,
-		_sizeYZ: number,
-		_sizeZ: number,
+		_sizeYZ: number, -- Cached from Grid.GridSize for hot-path performance.
+		_sizeZ: number, -- Cached from Grid.GridSize for hot-path performance.
 		Resolution: number,
 		_reuseMats: { { { Enum.Material } } },
 		_reuseOccs: { { { number } } },
@@ -591,12 +589,16 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 	local maxExtent = math.max(globalMaxSR, SEA_LEVEL)
 	local rawWorldSize = math.ceil(maxExtent / 8) * 8 * 2
 	local worldSpaceSize = math.ceil(rawWorldSize / 8) * 8
-	local gridSpaceSize = math.ceil(worldSpaceSize / alignedChunkSize)
 
 	local center = Vector3.zero
-	local gridSize = Vector3.one * gridSpaceSize
 	local gridWorldSize = Vector3.one * worldSpaceSize
-	local generationOrigin = center - gridWorldSize / 2 + Vector3.one * (alignedChunkSize / 2)
+
+	-- Create an Infinigrid instance for all grid/index/position math.
+	local grid = Infinigrid.new(center, gridWorldSize, alignedChunkSize)
+
+	-- Cache sizeYZ and sizeZ from the grid for hot-path performance in _ComputeChunkData/PeekChunk.
+	local cachedSizeYZ = grid.GridSize.Y * grid.GridSize.Z
+	local cachedSizeZ = grid.GridSize.Z
 
 	-- Pre-allocate reusable voxel arrays (safe for sequential single-chunk generation)
 	local reuseMats: { { { Enum.Material } } } = table.create(voxelsPerAxis) :: any
@@ -612,15 +614,11 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 
 	local self: PlanetGenerator = setmetatable({
 		MasterSeed = masterSeed,
-		ChunkSize = alignedChunkSize,
-		Center = center,
+		Grid = grid,
 		Radius = RADIUS,
 		SeaLevel = SEA_LEVEL,
 		MaxSurfaceRadius = maxExtent,
 		MinSurfaceRadius = globalMinSR,
-		GridSize = gridSize,
-		GridWorldSize = gridWorldSize,
-		GenerationOrigin = generationOrigin,
 		Resolution = RESOLUTION,
 		_voxelsPerAxis = voxelsPerAxis,
 		_deepStride = deepStride,
@@ -630,8 +628,8 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 		_gridBiome = gridBiomeTable,
 		_outerBound = outerBound,
 		_innerBound = innerBound,
-		_sizeYZ = gridSpaceSize * gridSpaceSize,
-		_sizeZ = gridSpaceSize,
+		_sizeYZ = cachedSizeYZ,
+		_sizeZ = cachedSizeZ,
 		_reuseMats = reuseMats,
 		_reuseOccs = reuseOccs,
 		_generated = {},
@@ -641,18 +639,15 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 end
 
 function PlanetGenerator.ChunkIndexToGridPosition(self: PlanetGenerator, chunkIndex: number): Vector3
-	local sizeYZ = self._sizeYZ
-	local sizeZ = self._sizeZ
-	local remainder = chunkIndex % sizeYZ
-	return Vector3.new(chunkIndex // sizeYZ, remainder // sizeZ, remainder % sizeZ)
+	return self.Grid:ChunkIndexToGridPosition(chunkIndex)
 end
 
 function PlanetGenerator.GridPositionToChunkIndex(self: PlanetGenerator, gridPosition: Vector3): number
-	return (gridPosition.X * self._sizeYZ) + (gridPosition.Y * self._sizeZ) + gridPosition.Z
+	return self.Grid:GridPositionToChunkIndex(gridPosition)
 end
 
 function PlanetGenerator.GridPositionToWorldPosition(self: PlanetGenerator, gridPosition: Vector3): Vector3
-	return self.GenerationOrigin + (gridPosition * self.ChunkSize)
+	return self.Grid:GridPositionToWorldPosition(gridPosition)
 end
 
 function PlanetGenerator.GetChunkSeed(self: PlanetGenerator, chunkIndex: number): number
@@ -676,8 +671,8 @@ function PlanetGenerator._ComputeChunkData(
 	local chunkSeed = tonumber(`{self.MasterSeed}{gx}{gy}{gz}`) :: number
 
 	-- Min corner in world space (Center is zero so GenerationOrigin - ChunkSize/2 = -GridWorldSize/2)
-	local halfWorld = self.GridWorldSize.X / 2
-	local cs = self.ChunkSize
+	local halfWorld = self.Grid.GridWorldSize.X / 2
+	local cs = self.Grid.ChunkSize
 	local cx = -halfWorld + gx * cs
 	local cy = -halfWorld + gy * cs
 	local cz = -halfWorld + gz * cs
@@ -835,8 +830,8 @@ function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): P
 	local chunkSeed = tonumber(`{self.MasterSeed}{gx}{gy}{gz}`) :: number
 
 	-- Chunk AABB in world space (center is origin)
-	local halfWorld = self.GridWorldSize.X / 2
-	local cs = self.ChunkSize
+	local halfWorld = self.Grid.GridWorldSize.X / 2
+	local cs = self.Grid.ChunkSize
 	local x0 = -halfWorld + gx * cs
 	local y0 = -halfWorld + gy * cs
 	local z0 = -halfWorld + gz * cs
