@@ -3,13 +3,19 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local Types = require(ReplicatedStorage.Shared.Types)
+local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
 export type Callback = (raceFinished: boolean) -> ()
 export type CancelCallback = () -> ()
-export type ConnectionLike = Types.ConnectionLike
-export type Waitable<Params...> = () -> () | Types.SignalLike<Params...>
+export type ConnectionLike =
+	RBXScriptConnection
+	| { Disconnect: (any?) -> any? }
+	| { Disconnect: (self: ConnectionLike) -> () }
+export type SignalLike<Params...> = RBXScriptSignal | Signal.Signal<Params...> | {
+	Connect: (self: SignalLike<Params...>, (Params...) -> ...any) -> ConnectionLike,
+}
+export type Waitable<Params...> = () -> () | SignalLike<Params...>
 
 --- Variables ---
 local TIME_BEFORE_WARN = 60 -- In seconds, how long to wait before warning for a nil timeout (only for unfinished races).

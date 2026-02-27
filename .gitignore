@@ -5,4 +5,4 @@
 sourcemap.json
 CodebaseStyleAndConventionGuide.md
 
-/*.lock
+*.lock
