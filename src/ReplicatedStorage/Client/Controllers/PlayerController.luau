@@ -101,6 +101,7 @@ function PlayerController:KnitStart()
 			gyro.Attachment0 = gyroAttachment
 			gyroAttachment.Name = "PlanetAlignOrientationAttachment"
 			gyroAttachment.Parent = character.PrimaryPart
+			gyro.Enabled = false
 			gyro.Parent = character.PrimaryPart
 		end)
 		self.OnDied:Connect(CleanupGyro)
@@ -118,7 +119,7 @@ function PlayerController:KnitStart()
 			local zDir = origin.ZVector
 			local xDir = normal:Cross(zDir)
 			local moveDirection = character.Humanoid.MoveDirection
-			local projected = moveDirection - normal * moveDirection:Dot(normal)
+			local projected = moveDirection - (normal * moveDirection:Dot(normal))
 			if projected.Magnitude > 0.1 then
 				projected = projected.Unit
 				local rightDir = projected:Cross(normal)

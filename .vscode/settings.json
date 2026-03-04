@@ -91,4 +91,5 @@
 		"WDHMS",
 		"xpcall"
 	],
+	"stylua.targetReleaseVersion": "latest",
 }

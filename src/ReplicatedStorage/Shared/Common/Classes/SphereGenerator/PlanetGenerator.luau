@@ -51,12 +51,12 @@ local RESOLUTION = 4
 local INV_RESOLUTION = 1 / RESOLUTION
 local DEEP_STRIDE = 4
 
-local RADIUS = 8192
+local RADIUS = 16384
 local SEA_LEVEL_OFFSET = 0
 local MAX_HEIGHT_VARIATION = 512
 local SEA_LEVEL = RADIUS + SEA_LEVEL_OFFSET
 
-local TERRAIN_NOISE_SCALE = 6
+local TERRAIN_NOISE_SCALE = 5
 local TEMPERATURE_NOISE_SCALE = 2.5
 local MOISTURE_NOISE_SCALE = 3
 local MOUNTAIN_NOISE_SCALE = 1.8
@@ -292,8 +292,8 @@ local function getSurfaceRadius(
 		local oceanFloorNoise =
 			noise:FBM3D(direction.X * ofs, direction.Y * ofs, direction.Z * ofs, 3, 2.0, 0.5, CH_OCEAN_FLOOR)
 		local trenchScale = mathClamp((od - 0.3) / 0.3, 0, 1)
-		local trenchBonus = mathClamp(oceanFloorNoise, -0.95, 0.1) * maxH * 0.4 * trenchScale
-		baseElev = -depthCurve * maxH * 1.0 + trenchBonus
+		local trenchBonus = mathClamp(oceanFloorNoise, -0.95, 0.1) * maxH * 0.7 * trenchScale
+		baseElev = -depthCurve * maxH * 1.8 + trenchBonus
 
 		if od > 0.5 then
 			local ridgeOceanScale = TERRAIN_NOISE_SCALE * 0.4
@@ -314,14 +314,14 @@ local function getSurfaceRadius(
 	end
 
 	local s = TERRAIN_NOISE_SCALE
-	local hN = noise:FBM3D(direction.X * s, direction.Y * s, direction.Z * s, 4, 2.0, 0.5, CH_TERRAIN)
-	local ds = s * 3
-	local dN = noise:FBM3D(direction.X * ds, direction.Y * ds, direction.Z * ds, 2, 2.0, 0.5, CH_DETAIL)
+	local hN = noise:FBM3D(direction.X * s, direction.Y * s, direction.Z * s, 6, 2.0, 0.45, CH_TERRAIN)
+	local ds = s * 2
+	local dN = noise:FBM3D(direction.X * ds, direction.Y * ds, direction.Z * ds, 3, 2.0, 0.4, CH_DETAIL)
 
 	local isLand = continentValue > 0
 	local oceanFlatness = if isLand then 1 else mathClamp(1 - math.abs(continentValue) * 4, 0.02, 1)
-	local tAmp = if isLand then maxH * heightScale * 0.3 else maxH * 0.03 * oceanFlatness
-	local dAmp = if isLand then maxH * heightScale * 0.1 else maxH * 0.01 * oceanFlatness
+	local tAmp = if isLand then maxH * heightScale * 0.25 else maxH * 0.02 * oceanFlatness
+	local dAmp = if isLand then maxH * heightScale * 0.07 else maxH * 0.005 * oceanFlatness
 	local tOff = hN * tAmp + dN * dAmp
 
 	if isLand and mountainness > 0.1 then
@@ -420,6 +420,14 @@ local function getMaterial(
 	return biome.DeepMaterial
 end
 
+-- Catmull-Rom cubic interpolation weights for parameter t in [0, 1].
+-- Returns weights for indices -1, 0, +1, +2 relative to the cell base.
+local function catmullRom(t: number): (number, number, number, number)
+	local t2 = t * t
+	local t3 = t2 * t
+	return -0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2
+end
+
 local function surfaceLookup(
 	gridSR: { [number]: { [number]: number } },
 	gridBiomeTable: { [number]: { [number]: Biome } },
@@ -436,25 +444,43 @@ local function surfaceLookup(
 	local latF = theta / PI * GRID_LAT
 	local lonF = phi / TWO_PI * GRID_LON
 
-	local lat0 = mathClamp(mathFloor(latF), 0, GRID_LAT - 1)
-	local lat1 = lat0 + 1
-	local lon0 = mathFloor(lonF) % GRID_LON
-	local lon1 = (lon0 + 1) % GRID_LON
+	local latBase = mathFloor(latF)
+	local lonBase = mathFloor(lonF)
+	local tLat = latF - latBase
+	local tLon = lonF - lonBase
 
-	local tLat = latF - lat0
-	local tLon = lonF - mathFloor(lonF)
-	local oLat = 1 - tLat
-	local oLon = 1 - tLon
+	-- Catmull-Rom weights (C1-continuous bicubic interpolation)
+	local wLa, wLb, wLc, wLd = catmullRom(tLat)
+	local wMa, wMb, wMc, wMd = catmullRom(tLon)
 
-	local srRow0 = gridSR[lat0]
-	local srRow1 = gridSR[lat1]
-	local sr = srRow0[lon0] * oLat * oLon
-		+ srRow0[lon1] * oLat * tLon
-		+ srRow1[lon0] * tLat * oLon
-		+ srRow1[lon1] * tLat * tLon
+	-- Latitude indices (clamped at poles)
+	local la = mathClamp(latBase - 1, 0, GRID_LAT)
+	local lb = mathClamp(latBase, 0, GRID_LAT)
+	local lc = mathClamp(latBase + 1, 0, GRID_LAT)
+	local ld = mathClamp(latBase + 2, 0, GRID_LAT)
 
-	local nearLat = if tLat < 0.5 then lat0 else lat1
-	local nearLon = if tLon < 0.5 then lon0 else lon1
+	-- Longitude indices (wrapped)
+	local ma = (lonBase - 1) % GRID_LON
+	local mb = lonBase % GRID_LON
+	local mc = (lonBase + 1) % GRID_LON
+	local md = (lonBase + 2) % GRID_LON
+
+	-- Bicubic: interpolate 4 rows in longitude, then combine in latitude
+	local row
+	row = gridSR[la]
+	local ra = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[lb]
+	local rb = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[lc]
+	local rc = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[ld]
+	local rd = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+
+	local sr = wLa * ra + wLb * rb + wLc * rc + wLd * rd
+
+	-- Biome: nearest-neighbor (biomes are discrete, cannot be interpolated)
+	local nearLat = mathClamp(if tLat < 0.5 then latBase else latBase + 1, 0, GRID_LAT)
+	local nearLon = (if tLon < 0.5 then lonBase else lonBase + 1) % GRID_LON
 
 	return sr, gridBiomeTable[nearLat][nearLon]
 end
@@ -472,18 +498,35 @@ local function surfaceRadiusLookup(
 	end
 	local latF = theta / PI * GRID_LAT
 	local lonF = phi / TWO_PI * GRID_LON
-	local lat0 = mathClamp(mathFloor(latF), 0, GRID_LAT - 1)
-	local lat1 = lat0 + 1
-	local lon0 = mathFloor(lonF) % GRID_LON
-	local lon1 = (lon0 + 1) % GRID_LON
-	local tLat = latF - lat0
-	local tLon = lonF - mathFloor(lonF)
-	local srRow0 = gridSR[lat0]
-	local srRow1 = gridSR[lat1]
-	return srRow0[lon0] * (1 - tLat) * (1 - tLon)
-		+ srRow0[lon1] * (1 - tLat) * tLon
-		+ srRow1[lon0] * tLat * (1 - tLon)
-		+ srRow1[lon1] * tLat * tLon
+	local latBase = mathFloor(latF)
+	local lonBase = mathFloor(lonF)
+	local tLat = latF - latBase
+	local tLon = lonF - lonBase
+
+	local wLa, wLb, wLc, wLd = catmullRom(tLat)
+	local wMa, wMb, wMc, wMd = catmullRom(tLon)
+
+	local la = mathClamp(latBase - 1, 0, GRID_LAT)
+	local lb = mathClamp(latBase, 0, GRID_LAT)
+	local lc = mathClamp(latBase + 1, 0, GRID_LAT)
+	local ld = mathClamp(latBase + 2, 0, GRID_LAT)
+
+	local ma = (lonBase - 1) % GRID_LON
+	local mb = lonBase % GRID_LON
+	local mc = (lonBase + 1) % GRID_LON
+	local md = (lonBase + 2) % GRID_LON
+
+	local row
+	row = gridSR[la]
+	local ra = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[lb]
+	local rb = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[lc]
+	local rc = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+	row = gridSR[ld]
+	local rd = wMa * row[ma] + wMb * row[mb] + wMc * row[mc] + wMd * row[md]
+
+	return wLa * ra + wLb * rb + wLc * rc + wLd * rd
 end
 
 --- Planet Generator Class ---
