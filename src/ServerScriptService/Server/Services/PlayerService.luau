@@ -145,6 +145,30 @@ function PlayerService:PlayerDied(player: Player): Signal<>
 	return self._diedEvents[player]
 end
 
-function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player) end
+function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player)
+	do -- Handle custom character controller.
+		-- Create the controller objects.
+		-- TODO: better organize code
+		local manager = Instance.new("ControllerManager")
+		local groundController = Instance.new("GroundController")
+		local airController = Instance.new("AirController")
+		local groundSensor = Instance.new("ControllerPartSensor")
+		airController.MoveMaxForce = 1000
+		airController.BalanceRigidityEnabled = true
+		airController.MaintainAngularMomentum = false
+		groundController.BalanceRigidityEnabled = true
+		groundSensor.SearchDistance = 4.5 -- (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
+		groundController.GroundOffset = character.Humanoid.HipHeight
+		groundSensor.Name = "GroundSensor"
+		groundSensor.UpdateType = Enum.SensorUpdateType.Manual
+		manager.GroundSensor = groundSensor
+		manager.RootPart = character.HumanoidRootPart
+		manager.ActiveController = groundController
+		groundController.Parent = manager
+		airController.Parent = manager
+		groundSensor.Parent = character.HumanoidRootPart
+		manager.Parent = character
+	end
+end
 
 return PlayerService
