@@ -19,9 +19,6 @@ local PlanetService = {
 Knit.CreateService(PlanetService)
 
 function PlanetService:KnitStart()
-	do
-		return
-	end
 	PlayerService = Knit.GetService("PlayerService")
 
 	local planet = PlanetGenerator.new(67, 64)

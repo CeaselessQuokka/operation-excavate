@@ -837,19 +837,27 @@ function PlanetGenerator._ComputeChunkData(
 				local invDist = 1 / dist
 				local sr, biome = surfaceLookup(gSR, gBiome, wx * invDist, wy * invDist, wz * invDist)
 
-				if dist <= sr then
+				-- Signed-distance occupancy (matches FillBall smoothness):
+				-- Voxels within half a voxel of the surface get fractional occupancy
+				-- on both sides, producing a perfectly smooth sphere edge.
+				local terrainOcc = mathClamp(0.5 + (sr - dist) * invRes, 0, 1)
+
+				if terrainOcc > 0 then
+					occs[ix][iy][iz] = terrainOcc
 					local depth = sr - dist
-					occs[ix][iy][iz] = mathClamp(0.5 + depth * invRes, 0, 1)
-					mats[ix][iy][iz] = getMaterial(nOff, depth, sr, dist, biome, wx, wy, wz)
-					hasContent = true
-				elseif dist <= SEA_LEVEL then
-					local wd = SEA_LEVEL - dist
-					occs[ix][iy][iz] = mathClamp(0.5 + wd * invRes, 0, 1)
-					mats[ix][iy][iz] = Enum.Material.Water
+					mats[ix][iy][iz] = getMaterial(nOff, if depth > 0 then depth else 0, sr, dist, biome, wx, wy, wz)
 					hasContent = true
 				else
-					mats[ix][iy][iz] = Enum.Material.Air
-					occs[ix][iy][iz] = 0
+					-- No terrain; smooth water at sea-level boundary
+					local waterOcc = mathClamp(0.5 + (SEA_LEVEL - dist) * invRes, 0, 1)
+					if waterOcc > 0 then
+						occs[ix][iy][iz] = waterOcc
+						mats[ix][iy][iz] = Enum.Material.Water
+						hasContent = true
+					else
+						mats[ix][iy][iz] = Enum.Material.Air
+						occs[ix][iy][iz] = 0
+					end
 				end
 			end
 		end
