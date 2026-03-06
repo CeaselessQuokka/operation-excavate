@@ -8,7 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 --- Imports ---
-local CharacterHelper = require(ReplicatedStorage.Modules.Helpers.CharacterHelper)
+local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 
 --- Types ---
 export type TweenOptions = {

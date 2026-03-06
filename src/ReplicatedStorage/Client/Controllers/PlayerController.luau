@@ -7,12 +7,11 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 --- Imports ---
+local CameraHelper = require(ReplicatedStorage.Shared.Helpers.CameraHelper)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
-local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
-local TableHelper = require(ReplicatedStorage.Shared.Helpers.TableHelper)
 local ThreadingHelper = require(ReplicatedStorage.Shared.Helpers.ThreadingHelper)
 
 local PlayerModule = (require)(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
@@ -361,6 +360,123 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			end
 		end)
 		character.Humanoid.EvaluateStateMachine = false
+	end
+
+	do -- Handle custom camera (orbital, supports spherical planet).
+		local MIN_ZOOM = 5
+		local MAX_ZOOM = 100
+		local ZOOM_STEP = 2
+		local SENSITIVITY = Vector2.new(1, 1) * math.rad(0.5)
+		local MIN_PITCH = math.rad(-80)
+		local MAX_PITCH = math.rad(80)
+		local HEAD_OFFSET = Vector3.new(0, 1.5, 0) -- offset from HumanoidRootPart to head
+
+		local camera = CameraHelper.GetCamera()
+		local zoomLevel = 16
+		local pitch = 0 -- vertical angle (radians), 0 = horizon
+		local yawDelta = 0 -- accumulated mouse yaw since last frame
+		local pitchDelta = 0 -- accumulated mouse pitch since last frame
+
+		-- Camera's own forward direction on the tangent plane (world space).
+		-- Initialized from character look on first frame and then maintained independently.
+		local cameraForward: Vector3? = nil
+
+		CameraHelper.SetScriptable()
+
+		-- Accumulate mouse/touch delta for camera rotation.
+		local rotateConnection = UserInputService.InputChanged:Connect(function(input, gameProcessed)
+			if
+				input.UserInputType == Enum.UserInputType.MouseMovement
+				and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+			then
+				local delta = input.Delta
+				yawDelta -= delta.X * SENSITIVITY.X
+				pitchDelta -= delta.Y * SENSITIVITY.Y
+			elseif input.UserInputType == Enum.UserInputType.Touch then
+				local delta = input.Delta
+				yawDelta -= delta.X * SENSITIVITY.X
+				pitchDelta -= delta.Y * SENSITIVITY.Y
+			end
+		end)
+
+		-- Zoom via scroll wheel.
+		local zoomConnection = UserInputService.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseWheel then
+				zoomLevel = math.clamp(zoomLevel - input.Position.Z * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM)
+			end
+		end)
+
+		-- Right-click hides cursor for look, like default camera.
+		local mbDownConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed then
+				return
+			end
+			if input.UserInputType == Enum.UserInputType.MouseButton2 then
+				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+			end
+		end)
+		local mbUpConn = UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton2 then
+				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			end
+		end)
+
+		RunService.PreRender:Connect(function()
+			if not character or not character.HumanoidRootPart then
+				return
+			end
+
+			local rootCF = character.HumanoidRootPart.CFrame
+			local up = rootCF.Position.Unit -- surface normal on a sphere centered at origin
+			local focusPoint = rootCF.Position + rootCF:VectorToWorldSpace(HEAD_OFFSET)
+
+			-- Initialize camera forward from character look on first frame.
+			if not cameraForward then
+				local charLook = rootCF.LookVector
+				local proj = charLook - up * charLook:Dot(up)
+				if proj.Magnitude < 0.001 then
+					proj = Vector3.xAxis:Cross(up)
+					if proj.Magnitude < 0.001 then
+						proj = Vector3.zAxis:Cross(up)
+					end
+				end
+				cameraForward = proj.Unit
+			else
+				-- Re-project onto current tangent plane (up changes as we walk on the sphere).
+				local proj = cameraForward - up * cameraForward:Dot(up)
+				if proj.Magnitude < 0.001 then
+					proj = Vector3.xAxis:Cross(up)
+					if proj.Magnitude < 0.001 then
+						proj = Vector3.zAxis:Cross(up)
+					end
+				end
+				cameraForward = proj.Unit
+			end
+
+			-- Apply yaw delta: rotate cameraForward around the surface normal.
+			if yawDelta ~= 0 then
+				cameraForward = CFrame.fromAxisAngle(up, yawDelta):VectorToWorldSpace(cameraForward)
+				yawDelta = 0
+			end
+
+			-- Apply pitch delta.
+			if pitchDelta ~= 0 then
+				pitch = math.clamp(pitch + pitchDelta, MIN_PITCH, MAX_PITCH)
+				pitchDelta = 0
+			end
+
+			-- Build camera frame from the independent forward direction.
+			local right = cameraForward:Cross(up).Unit
+			local refFrame = CFrame.fromMatrix(focusPoint, right, up)
+
+			-- Apply pitch (tilt up/down). Yaw is already baked into cameraForward.
+			local rotated = refFrame * CFrame.Angles(pitch, 0, 0)
+
+			-- Place camera behind the focus point along the rotated look direction.
+			local cameraPos = focusPoint - rotated.LookVector * zoomLevel
+			camera.CFrame = CFrame.lookAt(cameraPos, focusPoint, up)
+			camera.Focus = CFrame.new(focusPoint)
+		end)
 	end
 end
 
