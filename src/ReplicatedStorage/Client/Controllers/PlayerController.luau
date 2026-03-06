@@ -285,6 +285,14 @@ end
 
 function PlayerController:_InitializeCharacter(character: UsableCharacter)
 	local self = PlayerController
+
+	-- TODO: recode everything and put in own controllers
+	-- TODO: need to change lighting based off point on planet to have a smooth transition from day to night or vice versa
+	-- Camera's own forward direction on the tangent plane (world space).
+	-- Shared between the controller and camera blocks so movement can be
+	-- computed relative to the camera without relying on Roblox's flat-world projection.
+	local cameraForward: Vector3? = nil
+
 	do -- Handle custom controller logic.
 		local manager: ControllerManager = self:WaitForInstance(">ControllerManager", character)
 		if not manager then
@@ -322,10 +330,27 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 		params:AddToFilter(character)
 		RunService.Heartbeat:Connect(function()
 			local origin = character.HumanoidRootPart.CFrame
-			manager.MovingDirection = character.Humanoid.MoveDirection
 			manager.UpDirection = origin.Position.Unit
-			if character.Humanoid.MoveDirection.Magnitude > 0.1 then
-				manager.FacingDirection = character.Humanoid.MoveDirection
+
+			-- Compute movement direction from raw input + camera tangent-plane vectors
+			-- instead of Humanoid.MoveDirection, which Roblox projects onto world XZ (flat world).
+			local moveDir = Vector3.zero
+			if cameraForward then
+				local up = manager.UpDirection
+				local forward = cameraForward
+				local right = forward:Cross(up).Unit
+				local rawInput = PlayerModule:GetControls():GetMoveVector() -- X=right, Z=forward
+				if rawInput.Magnitude > 0.001 then
+					moveDir = (forward * -rawInput.Z + right * rawInput.X)
+					if moveDir.Magnitude > 0.001 then
+						moveDir = moveDir.Unit
+					end
+				end
+			end
+
+			manager.MovingDirection = moveDir
+			if moveDir.Magnitude > 0.1 then
+				manager.FacingDirection = moveDir
 			end
 			if
 				manager.ActiveController == airController
@@ -376,10 +401,6 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 		local pitch = 0 -- vertical angle (radians), 0 = horizon
 		local yawDelta = 0 -- accumulated mouse yaw since last frame
 		local pitchDelta = 0 -- accumulated mouse pitch since last frame
-
-		-- Camera's own forward direction on the tangent plane (world space).
-		-- Initialized from character look on first frame and then maintained independently.
-		local cameraForward: Vector3? = nil
 
 		CameraHelper.SetScriptable()
 
