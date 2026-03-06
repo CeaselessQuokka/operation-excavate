@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 --- Imports ---
@@ -10,6 +11,8 @@ local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
+local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
+local TableHelper = require(ReplicatedStorage.Shared.Helpers.TableHelper)
 local ThreadingHelper = require(ReplicatedStorage.Shared.Helpers.ThreadingHelper)
 
 local PlayerModule = (require)(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
@@ -304,19 +307,34 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			return
 		end
 
+		local jumpAnim: Animation = self:WaitForInstance("Animation#JumpAnim", character)
+		if not jumpAnim then
+			return
+		end
+
 		-- TODO: need to properly cleanup
 		-- TODO: make more efficient
+		-- TODO: need to fix this in TableEditor: `local view = TableEditor.View("Tracks", TableHelper.ArrayToSet(character.Humanoid.Animator:GetPlayingAnimationTracks()))`; it doesn't remove old keys
 		local searchDistance = groundSensor.SearchDistance
-		local direction = Vector3.new(0, -searchDistance, 0)
-		print("huh", searchDistance, direction)
 		local params = RaycastParams.new()
+		local jumpTrack = (CharacterHelper.GetAnimator(character, true) :: Animator):LoadAnimation(jumpAnim)
+		jumpTrack.Priority = Enum.AnimationPriority.Action
+		jumpTrack.Looped = false
 		params:AddToFilter(character)
-		RunService.RenderStepped:Connect(function()
+		RunService.Heartbeat:Connect(function()
+			local origin = character.HumanoidRootPart.CFrame
 			manager.MovingDirection = character.Humanoid.MoveDirection
+			manager.UpDirection = origin.Position.Unit
 			if character.Humanoid.MoveDirection.Magnitude > 0.1 then
 				manager.FacingDirection = character.Humanoid.MoveDirection
 			end
-			local result = Workspace:Raycast(character.HumanoidRootPart.Position, direction, params)
+			if
+				manager.ActiveController == airController
+				and character.HumanoidRootPart.AssemblyLinearVelocity.Y < 0
+			then
+				jumpTrack:Stop()
+			end
+			local result = Workspace:Raycast(origin.Position, origin.UpVector * -searchDistance, params)
 			if result then
 				groundSensor.HitFrame = CFrame.new(result.Position)
 				groundSensor.HitNormal = result.Normal
@@ -326,6 +344,20 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			else
 				character.Humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 				manager.ActiveController = airController
+			end
+		end)
+		-- TODO: use inputcontext and support all modalities
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or manager.ActiveController ~= groundController then
+				return
+			end
+
+			if input.KeyCode == Enum.KeyCode.Space then
+				character.HumanoidRootPart:ApplyImpulse(
+					character.HumanoidRootPart.CFrame.UpVector
+						* (character.Humanoid.JumpPower * character.HumanoidRootPart.AssemblyMass)
+				)
+				jumpTrack:Play()
 			end
 		end)
 		character.Humanoid.EvaluateStateMachine = false
