@@ -163,6 +163,7 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		groundSensor.UpdateType = Enum.SensorUpdateType.Manual
 		manager.GroundSensor = groundSensor
 		manager.RootPart = character.HumanoidRootPart
+		manager.BaseTurnSpeed = 12
 		manager.ActiveController = groundController
 		groundController.Parent = manager
 		airController.Parent = manager

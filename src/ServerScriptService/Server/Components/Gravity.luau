@@ -34,8 +34,10 @@ end
 function Gravity.Start(self: Component)
 	local force = self._cleaner:Add(Instance.new("VectorForce"))
 	local attachment = self._cleaner:Add(Instance.new("Attachment"))
+	attachment.Name = "CustomGravityAttachment"
 	force.RelativeTo = Enum.ActuatorRelativeTo.World
 	attachment.Parent = self.Instance
+	attachment.Axis = Vector3.new(0, 0, -1)
 	force.Attachment0 = attachment
 	force.Parent = self.Instance
 	self._cleaner:Add(RunService.Heartbeat:Connect(function()

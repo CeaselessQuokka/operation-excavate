@@ -82,63 +82,6 @@ function PlayerController:KnitStart()
 	if localPlayer.Character then
 		task.defer(OnCharacterAdded, localPlayer.Character)
 	end
-
-	-- do -- Handle character rotation about planet. (TODO: Check for water)
-	-- 	local gyro: AlignOrientation?
-	-- 	local gyroAttachment: Attachment?
-	-- 	local function CleanupGyro()
-	-- 		if gyro then
-	-- 			pcall(game.Destroy, gyro)
-	-- 			gyro = nil
-	-- 		end
-	-- 		if gyroAttachment then
-	-- 			pcall(game.Destroy, gyroAttachment)
-	-- 			gyroAttachment = nil
-	-- 		end
-	-- 	end
-	-- 	self:CharacterAdded(function(character)
-	-- 		gyro = Instance.new("AlignOrientation")
-	-- 		gyroAttachment = Instance.new("Attachment")
-	-- 		gyro.Name = "PlanetAlignOrientation"
-	-- 		gyro.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	-- 		gyro.MaxTorque = 1e9
-	-- 		gyro.Responsiveness = 75
-	-- 		gyro.Attachment0 = gyroAttachment
-	-- 		gyroAttachment.Name = "PlanetAlignOrientationAttachment"
-	-- 		gyroAttachment.Parent = character.PrimaryPart
-	-- 		gyro.Enabled = false
-	-- 		gyro.Parent = character.PrimaryPart
-	-- 	end)
-	-- 	self.OnDied:Connect(CleanupGyro)
-	-- 	localPlayer.CharacterRemoving:Connect(CleanupGyro)
-
-	-- 	-- Handle actual rotation logic.
-	-- 	RunService.PreRender:Connect(function()
-	-- 		local character = self.Character
-	-- 		if not character or not gyro or not gyroAttachment then
-	-- 			return
-	-- 		end
-
-	-- 		local origin = character:GetPivot()
-	-- 		local normal = origin.Position.Unit -- Assumes origin is (0, 0, 0); otherwise you'd need to subtract position by the origin.
-	-- 		local zDir = origin.ZVector
-	-- 		local xDir = normal:Cross(zDir)
-	-- 		local moveDirection = character.Humanoid.MoveDirection
-	-- 		local projected = moveDirection - (normal * moveDirection:Dot(normal))
-	-- 		if projected.Magnitude > 0.1 then
-	-- 			projected = projected.Unit
-	-- 			local rightDir = projected:Cross(normal)
-	-- 			gyro.CFrame = CFrame.fromMatrix(Vector3.zero, rightDir, normal)
-	-- 		else
-	-- 			gyro.CFrame = CFrame.fromMatrix(Vector3.zero, xDir, normal)
-	-- 		end
-	-- 		-- gyro.CFrame = CFrame.fromMatrix(Vector3.zero, xDir, normal)
-	-- 		-- local moveDirection = character.Humanoid.MoveDirection
-	-- 		-- if moveDirection.Magnitude > 0.1 then
-	-- 		-- 	character:PivotTo(CFrame.lookAlong(origin.Position, moveDirection, normal))
-	-- 		-- end
-	-- 	end)
-	-- end
 end
 
 function PlayerController:CharacterAdded(callback: (character: UsableCharacter) -> ()): SignalConnection
@@ -148,9 +91,8 @@ function PlayerController:CharacterAdded(callback: (character: UsableCharacter) 
 	return self.OnCharacterAdded:Connect(callback)
 end
 
--- TODO: replace with generic, and call with <<ControllerManager>> once StyLua fixes styling (currently the styler breaks with the <<TYPE>> syntax)
--- TODO: replace character with "from", that way it supports any path
-function PlayerController:WaitForInstance(query: string, character: UsableCharacter?): any?
+-- TODO: replace character with "from", that way it supports any path (should make this a general utility)
+function PlayerController:WaitForInstance<T>(query: string, character: UsableCharacter?): T?
 	local s = os.clock()
 	-- Resolve character.
 	local self = PlayerController
@@ -288,40 +230,49 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 
 	-- TODO: recode everything and put in own controllers
 	-- TODO: need to change lighting based off point on planet to have a smooth transition from day to night or vice versa
-	-- Camera's own forward direction on the tangent plane (world space).
-	-- Shared between the controller and camera blocks so movement can be
-	-- computed relative to the camera without relying on Roblox's flat-world projection.
 	local cameraForward: Vector3? = nil
 
 	do -- Handle custom controller logic.
-		local manager: ControllerManager = self:WaitForInstance(">ControllerManager", character)
+		local manager = self:WaitForInstance<<ControllerManager>>(">ControllerManager", character)
 		if not manager then
 			return
 		end
 
-		local groundController: GroundController = self:WaitForInstance("GroundController", character)
+		local groundController = self:WaitForInstance<<GroundController>>("GroundController", character)
 		if not groundController then
 			return
 		end
 
-		local airController: AirController = self:WaitForInstance("AirController", character)
+		local airController = self:WaitForInstance<<AirController>>("AirController", character)
 		if not airController then
 			return
 		end
 
-		local groundSensor: ControllerPartSensor = self:WaitForInstance("ControllerPartSensor#GroundSensor", character)
+		local groundSensor =
+			self:WaitForInstance<<ControllerPartSensor>>("ControllerPartSensor#GroundSensor", character)
 		if not groundSensor then
 			return
 		end
 
-		local jumpAnim: Animation = self:WaitForInstance("Animation#JumpAnim", character)
+		local jumpAnim = self:WaitForInstance<<Animation>>("Animation#JumpAnim", character)
 		if not jumpAnim then
+			return
+		end
+
+		local movementAttachment = self:WaitForInstance<<Attachment>>("Attachment#CustomGravityAttachment", character)
+		if not movementAttachment then
 			return
 		end
 
 		-- TODO: need to properly cleanup
 		-- TODO: make more efficient
 		-- TODO: need to fix this in TableEditor: `local view = TableEditor.View("Tracks", TableHelper.ArrayToSet(character.Humanoid.Animator:GetPlayingAnimationTracks()))`; it doesn't remove old keys
+		local movementVelocity = Instance.new("LinearVelocity")
+		movementVelocity.Attachment0 = movementAttachment
+		movementVelocity.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
+		movementVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+		movementVelocity.MaxForce = 5000
+		movementVelocity.Parent = movementAttachment.Parent
 		local searchDistance = groundSensor.SearchDistance
 		local params = RaycastParams.new()
 		local jumpTrack = (CharacterHelper.GetAnimator(character, true) :: Animator):LoadAnimation(jumpAnim)
@@ -344,14 +295,17 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 					moveDir = (forward * -rawInput.Z + right * rawInput.X)
 					if moveDir.Magnitude > 0.001 then
 						moveDir = moveDir.Unit
+						movementAttachment.WorldAxis = moveDir
+						movementVelocity.LineVelocity = manager.BaseMoveSpeed
+						manager.FacingDirection = moveDir
+					else
+						movementVelocity.LineVelocity = 0
 					end
+				else
+					movementVelocity.LineVelocity = 0
 				end
 			end
 
-			manager.MovingDirection = moveDir
-			if moveDir.Magnitude > 0.1 then
-				manager.FacingDirection = moveDir
-			end
 			if
 				manager.ActiveController == airController
 				and character.HumanoidRootPart.AssemblyLinearVelocity.Y < 0
