@@ -271,7 +271,7 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 		movementVelocity.Attachment0 = movementAttachment
 		movementVelocity.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
 		movementVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
-		movementVelocity.MaxForce = 5000
+		movementVelocity.MaxForce = 10000
 		movementVelocity.Parent = movementAttachment.Parent
 		local searchDistance = groundSensor.SearchDistance
 		local params = RaycastParams.new()
@@ -343,8 +343,8 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 
 	do -- Handle custom camera (orbital, supports spherical planet).
 		local MIN_ZOOM = 5
-		local MAX_ZOOM = 100
-		local ZOOM_STEP = 2
+		local MAX_ZOOM = 2048
+		local ZOOM_STEP = 10
 		local SENSITIVITY = Vector2.new(1, 1) * math.rad(0.5)
 		local MIN_PITCH = math.rad(-80)
 		local MAX_PITCH = math.rad(80)

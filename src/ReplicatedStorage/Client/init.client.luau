@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
 local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
+local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
 
 --- Client Initialization ---
 -- Load Knit controllers.
