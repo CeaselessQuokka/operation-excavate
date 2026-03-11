@@ -68,6 +68,7 @@ function PlanetService:KnitStart()
 		local s = os.clock()
 		local nGenerated = 0
 		local lo, hi = 1, #sorted
+		-- TODO: does not work when player is rotated/on the side of the planet, probably can just switch back to pure magnitude sorting in that case
 
 		while lo <= hi do
 			local lastGenerated = nGenerated
