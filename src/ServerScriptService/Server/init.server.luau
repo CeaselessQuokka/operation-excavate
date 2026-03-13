@@ -9,7 +9,8 @@ local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
 
 --- Server Initialization ---
 -- Load Knit services.
-LoadingHelper.LoadModules(script.Services)
+-- LoadingHelper.LoadModules(script.Services)
+LoadingHelper.LoadModules(script.Systems)
 Knit.Start():expect()
 
 -- Load server and shared components.
