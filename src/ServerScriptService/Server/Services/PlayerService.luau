@@ -169,7 +169,7 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		airController.Parent = manager
 		groundSensor.Parent = character.HumanoidRootPart
 		manager.Parent = character
-		character.HumanoidRootPart:AddTag("Gravity")
+		-- character.HumanoidRootPart:AddTag("Gravity")
 	end
 end
 

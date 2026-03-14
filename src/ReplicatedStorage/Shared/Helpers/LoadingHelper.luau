@@ -5,8 +5,8 @@ local LoadingHelper = {}
 -- Loads modules deeply, but does not look into other modules.
 -- Modules are ignored if their "Enabled" attribute is false.
 -- Modules are ignored if they end in ".disabled".
-function LoadingHelper.LoadModules(root: Instance)
-	if root.ClassName == "ModuleScript" then
+function LoadingHelper.LoadModules(root: Instance, forceIn: boolean?)
+	if not forceIn and root.ClassName == "ModuleScript" then
 		if root:GetAttribute("Enabled") == false or root.Name:lower():find("%.disabled") then
 			return
 		end
