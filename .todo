@@ -1,3 +1,8 @@
+-- at night, the zombies should be attracted to light and sound
+--> you should be able to get stuff from zombies that you need to craft and other stuff so you have an incentive to do something at night
+--> could be cool to have night vision goggles too so if you're PVPing (or zombie'ing) you have an advantage (however have zombies, at least some types of zombies have great vision at night and be quite dangerous, Night Prowler?)
+--> should have noise traps and other types of traps for zombies and pvp
+-- need to balance well between villages, there need to be areas that spawn, maybe randomly? like "the bunker" in apoc. harder areas should have better loot, but also be hard and/or near impossible without the proper equipment and/or skill
 -- could use new fragment/sweep API for cutting through stuff or something in the game (https://devforum.roblox.com/t/studio-beta-solid-modeling-on-meshes-new-fragment-and-sweep-apis/4515374), like a laser cutter in Subnautica, who knows. Maybe cutting open locked boxes or something, or just a general laser (light saber too??) future tool that can basically cut through anything. **!!game will need to have hardness values and stuff for each material type!!**
 --> can also be cool to use that fragment API for shooting glass or something
 -- should have a rocket like transportation system, where you can go from point A to point B practically instantly, and should have an animation that moves around the world so you can see the scale of the world (maybe, because that means the whole surface would have to be rendered... hmm; I want people to know they are on a spherical planet). I could preplot a course and along that course it'll render the chunks but that is terrible. Oh well

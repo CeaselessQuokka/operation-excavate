@@ -3,6 +3,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+do
+	require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.GenerateTestEarth)
+	return
+end
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
 local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
