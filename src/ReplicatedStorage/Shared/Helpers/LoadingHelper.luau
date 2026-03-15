@@ -11,10 +11,12 @@ function LoadingHelper.LoadModules(root: Instance, forceIn: boolean?)
 			return
 		end
 
-		local success: boolean, err: string = pcall(require, root)
-		if not success then
-			warn(`[{script.Name}] Failed to load module "{root.Name}": {debug.traceback(err)}`)
-		end
+		task.spawn(function()
+			local success: boolean, err: string = pcall(require, root)
+			if not success then
+				warn(`[{script.Name}] Failed to load module "{root.Name}": {debug.traceback(err)}`)
+			end
+		end)
 	else
 		for _, module in root:GetChildren() do
 			LoadingHelper.LoadModules(module)

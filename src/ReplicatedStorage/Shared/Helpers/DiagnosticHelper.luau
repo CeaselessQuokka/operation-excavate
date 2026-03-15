@@ -816,7 +816,6 @@ function DiagnosticHelper.new(name: string, options: DiagnosticOptions?): Diagno
 		end
 
 		if timer.ActiveStart == nil then
-			warn(`[{SCRIPT_NAME}] Timer "{timerName}" is not running.`)
 			return nil
 		end
 

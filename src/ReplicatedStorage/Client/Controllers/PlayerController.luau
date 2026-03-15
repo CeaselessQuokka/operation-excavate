@@ -264,6 +264,7 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			return
 		end
 
+		-- TODO: need to check if on water or a non-cancollide part, so they can't walk on top of it (could be cool to have walk on water boots or something)
 		-- TODO: need to properly cleanup
 		-- TODO: make more efficient
 		-- TODO: need to fix this in TableEditor: `local view = TableEditor.View("Tracks", TableHelper.ArrayToSet(character.Humanoid.Animator:GetPlayingAnimationTracks()))`; it doesn't remove old keys

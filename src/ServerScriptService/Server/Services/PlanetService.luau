@@ -26,7 +26,6 @@ function PlanetService:KnitStart()
 	local fpsTable: { number } = table.create(60, task.wait())
 	local idx = 1
 	local nFrames = 1
-	print(fpsTable, #fpsTable)
 	RunService.Heartbeat:Connect(function(dt)
 		nFrames += dt
 		fpsTable[idx] = dt
@@ -37,7 +36,7 @@ function PlanetService:KnitStart()
 				tFps += v
 			end
 		end
-		if nFrames >= 0.125 then
+		if nFrames >= 0.375 then
 			TableEditor.ServerView(Players:GetPlayers(), "Info", {
 				FPS = math.floor(1 / (tFps / 60)),
 			})
@@ -98,7 +97,7 @@ function PlanetService:KnitStart()
 				task.wait()
 			end
 		end
-		print(os.clock() - s)
+		-- print(os.clock() - s)
 	end
 
 	local planetGrid = planet.Grid
@@ -117,7 +116,7 @@ function PlanetService:KnitStart()
 				continue
 			end
 
-			print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
+			-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
 			lastPositions[player] = currentPosition
 			task.spawn(function()
 				local currentChunkIndex = planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position)
