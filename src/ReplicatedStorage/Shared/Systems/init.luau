@@ -35,14 +35,6 @@ function SystemScheduler.Schedule(
 					end,
 				} :: any
 			) :: RBXScriptConnection
-			-- local running = false
-			-- connection = RunService.Heartbeat:Connect(function(dt)
-			-- 	if not running then
-			-- 		running = true
-			-- 		xpcall(fn, WarnError, dt)
-			-- 		running = false
-			-- 	end
-			-- end)
 		else
 			connection = RunService.Heartbeat:Connect(fn)
 		end
@@ -65,18 +57,6 @@ function SystemScheduler.Schedule(
 					end,
 				} :: any
 			) :: RBXScriptConnection
-			-- local running = false
-			-- connection = RunService.Heartbeat:Connect(function(dt: number)
-			-- 	accumulatedTime += dt
-			-- 	if accumulatedTime >= sanitizedInterval then
-			-- 		if not running then
-			-- 			running = true
-			-- 			xpcall(fn, WarnError, accumulatedTime)
-			-- 			running = false
-			-- 			accumulatedTime = 0
-			-- 		end
-			-- 	end
-			-- end)
 		else
 			connection = RunService.Heartbeat:Connect(function(dt: number)
 				accumulatedTime += dt

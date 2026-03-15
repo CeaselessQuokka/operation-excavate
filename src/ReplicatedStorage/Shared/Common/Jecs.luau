@@ -9,10 +9,8 @@ local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 --- Variables ---
 local Climbing = Jecs.tag()
-local Gravity = Jecs.tag()
 
 local World = Jecs.world(true)
-
 --- Functions ---
 
 --- Jecs Common ---
@@ -27,7 +25,6 @@ return {
 		}?>,
 
 		-- Gravity System
-		Gravity = Gravity,
-		GravityForce = World:component() :: Jecs.Id<VectorForce>,
+		Gravity = World:component() :: Jecs.Id<VectorForce>,
 	},
 }

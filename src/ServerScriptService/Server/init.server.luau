@@ -3,10 +3,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-do
-	require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.GenerateTestEarth)
-	return
-end
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
 local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
@@ -14,7 +10,8 @@ local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
 --- Server Initialization ---
 -- Load Knit services.
 LoadingHelper.LoadModules(script.Services)
-LoadingHelper.LoadModules(script.Systems, true)
+LoadingHelper.LoadModules(script.Systems)
+LoadingHelper.LoadModules(ReplicatedStorage.Shared.Systems, true)
 Knit.Start():expect()
 
 -- Load server and shared components.

@@ -105,7 +105,7 @@ function PlayerController:WaitForInstance<T>(query: string, character: UsableCha
 	while character == localPlayer.Character do
 		local instance = character:QueryDescendants(query)[1]
 		if instance then
-			print(`Resolved instance with query "{query}" after {os.clock() - s} seconds.`)
+			-- print(`Resolved instance with query "{query}" after {os.clock() - s} seconds.`)
 			return instance
 		end
 		ThreadingHelper.WaitForAny(
