@@ -8,6 +8,7 @@ local Workspace = game:GetService("Workspace")
 
 --- Imports ---
 local CameraHelper = require(ReplicatedStorage.Shared.Helpers.CameraHelper)
+local Jecs = require(ReplicatedStorage.Shared.Common.Jecs)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
@@ -259,7 +260,7 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			return
 		end
 
-		local movementAttachment = self:WaitForInstance<<Attachment>>("Attachment#CustomGravityAttachment", character)
+		local movementAttachment = self:WaitForInstance<<Attachment>>("Attachment#GravityAttachment", character)
 		if not movementAttachment then
 			return
 		end

@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local Jecs = require(ReplicatedStorage.Shared.Common.Jecs)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
@@ -146,6 +147,17 @@ function PlayerService:PlayerDied(player: Player): Signal<>
 end
 
 function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player)
+	local attachment = Instance.new("Attachment")
+	local force = Instance.new("VectorForce")
+	attachment.Name = "GravityAttachment"
+	attachment.Axis = Vector3.new(0, 0, -1)
+	force.Force = vector.zero :: any
+	force.RelativeTo = Enum.ActuatorRelativeTo.World
+	force.Attachment0 = attachment
+	attachment.Parent = character.HumanoidRootPart
+	force.Parent = character.HumanoidRootPart
+	Jecs.World:set(Jecs.World:entity(), Jecs.Components.Gravity, force)
+
 	do -- Handle custom character controller.
 		-- Create the controller objects.
 		-- TODO: better organize code
@@ -157,7 +169,7 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		airController.BalanceRigidityEnabled = true
 		airController.MaintainAngularMomentum = false
 		groundController.BalanceRigidityEnabled = true
-		groundSensor.SearchDistance = 4.5 -- (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
+		groundSensor.SearchDistance = (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
 		groundController.GroundOffset = character.Humanoid.HipHeight
 		groundSensor.Name = "GroundSensor"
 		groundSensor.UpdateType = Enum.SensorUpdateType.Manual
@@ -169,7 +181,6 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		airController.Parent = manager
 		groundSensor.Parent = character.HumanoidRootPart
 		manager.Parent = character
-		-- character.HumanoidRootPart:AddTag("Gravity")
 	end
 end
 

@@ -45,8 +45,8 @@ function SystemScheduler.Schedule(
 				while true do
 					accumulatedTime += task.wait()
 					if accumulatedTime >= sanitizedInterval then
-						accumulatedTime = 0
 						xpcall(fn, WarnError, accumulatedTime)
+						accumulatedTime = 0
 					end
 				end
 			end)
@@ -61,8 +61,8 @@ function SystemScheduler.Schedule(
 			connection = RunService.Heartbeat:Connect(function(dt: number)
 				accumulatedTime += dt
 				if accumulatedTime >= sanitizedInterval then
-					accumulatedTime = 0
 					fn(accumulatedTime)
+					accumulatedTime = 0
 				end
 			end)
 		end
