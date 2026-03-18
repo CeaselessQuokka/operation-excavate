@@ -7,7 +7,7 @@ local Signal = require(ReplicatedStorage.Packages.Signal)
 
 --- Types ---
 export type Callback = (raceFinished: boolean) -> ()
-export type CancelCallback = () -> ()
+export type CancelCallback = (raceFinished: boolean) -> ()
 export type ConnectionLike =
 	RBXScriptConnection
 	| { Disconnect: (any?) -> any? }
@@ -86,10 +86,10 @@ function ThreadingHelper.WaitForAnyAsync(callback: Callback, timeout: number?, .
 			end)
 		else
 			table.insert(
-				connections,
+				connections :: any,
 				(signal :: any):Connect(function()
 					Finish(true)
-				end)
+				end) :: any
 			)
 		end
 	end
@@ -149,7 +149,7 @@ function ThreadingHelper.WaitForAllAsync(callback: Callback, timeout: number?, .
 				Increment()
 			end)
 		else
-			table.insert(connections, (signal :: any):Connect(Increment))
+			table.insert(connections :: any, (signal :: any):Connect(Increment) :: any)
 		end
 	end
 end
@@ -171,7 +171,7 @@ function ThreadingHelper.WaitForEachDeferred<K, V>(
 	local runningThread = coroutine.running()
 	local timeoutThread
 	if timeout then
-		timeoutThread = task.delay(timeout, pcall, task.defer, runningThread)
+		timeoutThread = task.delay(timeout, pcall, task.defer :: any, runningThread)
 	end
 	local tasks = 0
 	for key, value in tbl do
@@ -184,7 +184,9 @@ function ThreadingHelper.WaitForEachDeferred<K, V>(
 			tasks -= 1
 			if tasks <= 0 then
 				pcall(task.defer, runningThread)
-				pcall(task.cancel, timeoutThread)
+				if timeoutThread then
+					pcall(task.cancel, timeoutThread)
+				end
 			end
 		end)
 	end

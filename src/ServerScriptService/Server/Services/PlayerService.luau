@@ -4,7 +4,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local Jecs = require(ReplicatedStorage.Shared.Common.Jecs)
+local Jecs = require(ReplicatedStorage.Packages.Jecs)
+local JecsCommon = require(ReplicatedStorage.Shared.Common.Jecs)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
@@ -22,6 +23,7 @@ local PlayerService = {
 	Name = "PlayerService",
 
 	Characters = {} :: { [Player]: UsableCharacter }, -- Note: Characters is a bit of a misnomer; these are UsableCharacters.
+	_jecsCharacters = {} :: { [Player]: Jecs.Entity<UsableCharacter> }, -- For storing character entities in Jecs.
 
 	_characterAddedEvents = {} :: { [Player]: Signal<UsableCharacter, Player> },
 	_diedEvents = {} :: { [Player]: Signal<> },
@@ -156,7 +158,8 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 	force.Attachment0 = attachment
 	attachment.Parent = character.HumanoidRootPart
 	force.Parent = character.HumanoidRootPart
-	Jecs.World:set(Jecs.World:entity(), Jecs.Components.Gravity, force)
+	-- TODO: need to handle resetting this whenever the player respawns
+	JecsCommon.World:set(JecsCommon.World:entity(), JecsCommon.Components.Gravity, force)
 
 	do -- Handle custom character controller.
 		-- Create the controller objects.

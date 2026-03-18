@@ -27,7 +27,7 @@ function TableHelper.DeepClone<T>(tbl: T): T
 	end
 
 	local clone = {}
-	for key, value in tbl do
+	for key, value in tbl :: any do
 		if typeof(value) == "table" then
 			clone[key] = TableHelper.DeepClone(value)
 		else
@@ -64,11 +64,11 @@ function TableHelper.DeepMerge<T, U>(base: T, override: U): T & U
 		return override :: any
 	end
 
-	for key, value in override do
-		if typeof(value) == "table" and typeof(base[key]) == "table" then
-			base[key] = TableHelper.DeepMerge(base[key], value)
+	for key, value in override :: any do
+		if typeof(value) == "table" and typeof((base :: any)[key]) == "table" then
+			(base :: any)[key] = TableHelper.DeepMerge((base :: any)[key], value)
 		else
-			base[key] = value
+			(base :: any)[key] = value
 		end
 	end
 	return base

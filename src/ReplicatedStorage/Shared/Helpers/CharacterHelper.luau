@@ -140,7 +140,7 @@ local R6_LIMB_INCLUDE_LIST = table.freeze({
 local CharacterHelper = {}
 
 local function GetCharacterModel(instance: ResolvableCharacterInstance): Character?
-	if Players:GetPlayerFromCharacter(instance) then
+	if Players:GetPlayerFromCharacter(instance :: any) then
 		-- Instance passed is the character model.
 		return instance :: Character
 	else
@@ -183,13 +183,13 @@ function CharacterHelper.GetCharacterFromLimb(limb: ResolvableCharacterInstance?
 	end
 
 	local rigType = humanoid.RigType.Name
-	if rigType == "R15" and not R15_LIMB_INCLUDE_LIST[limb.Name] then
+	if rigType == "R15" and not (R15_LIMB_INCLUDE_LIST :: any)[limb.Name] then
 		return nil
-	elseif rigType == "R6" and not R6_LIMB_INCLUDE_LIST[limb.Name] then
+	elseif rigType == "R6" and not (R6_LIMB_INCLUDE_LIST :: any)[limb.Name] then
 		return nil
 	end
 
-	return if Players:GetPlayerFromCharacter(character) then character :: Character else nil
+	return if Players:GetPlayerFromCharacter(character :: any) then character :: Character else nil
 end
 
 function CharacterHelper.GetHumanoid(instance: ResolvableCharacterInstance?): Humanoid?
@@ -219,11 +219,11 @@ function CharacterHelper.GetHumanoidFromLimb(limb: ResolvableCharacterInstance?)
 end
 
 function CharacterHelper.GetPlayer(instance: ResolvableCharacterInstance?): Player?
-	return Players:GetPlayerFromCharacter(CharacterHelper.GetCharacter(instance))
+	return Players:GetPlayerFromCharacter(CharacterHelper.GetCharacter(instance) :: any)
 end
 
 function CharacterHelper.GetPlayerFromLimb(limb: ResolvableCharacterInstance?): Player?
-	return Players:GetPlayerFromCharacter(CharacterHelper.GetCharacterFromLimb(limb))
+	return Players:GetPlayerFromCharacter(CharacterHelper.GetCharacterFromLimb(limb) :: any)
 end
 
 function CharacterHelper.GetPrimaryPart(instance: ResolvableCharacterInstance?): BasePart?
