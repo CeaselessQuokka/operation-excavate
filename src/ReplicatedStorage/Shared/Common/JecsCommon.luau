@@ -13,7 +13,6 @@ type UsableCharacter = CharacterHelper.UsableCharacter
 local Climbing = Jecs.tag()
 local OwnedBy = Jecs.tag()
 local Private = Jecs.tag()
-local Loaded = Jecs.tag()
 local Alive = Jecs.tag()
 
 local World = Jecs.world(true)
@@ -47,7 +46,6 @@ return {
 		-- General
 		OwnedBy = OwnedBy,
 		Private = Private,
-		Loaded = Loaded,
 
 		-- Entity
 		Alive = Alive,

@@ -6,12 +6,14 @@ local ServerStorage = game:GetService("ServerStorage")
 
 --- Imports ---
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
-local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local ThreadingHelper = require(ReplicatedStorage.Shared.Helpers.ThreadingHelper)
+
+local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
+local Types = require(ReplicatedStorage.Shared.Common.Types)
 
 --- Types ---
 type Character = CharacterHelper.Character
@@ -22,6 +24,10 @@ type SignalConnection = { Disconnect: (any) -> () }
 --- Player Service ---
 local PlayerService = {
 	Name = "PlayerService",
+	Client = {
+		-- Client to Server
+		OnResetRequested = Knit.CreateSignal() :: Types.ServerRemoteSignal<()>,
+	},
 
 	Characters = {} :: { [Player]: UsableCharacter }, -- Note: Characters is a bit of a misnomer; these are UsableCharacters.
 	_jecs = {} :: { [Player]: { Character: Jecs.Id, Gravity: Jecs.Id } },
@@ -51,12 +57,16 @@ function PlayerService:KnitInit()
 
 		character.Humanoid.Died:Once(function()
 			self.Characters[player] = nil
+			JecsCommon.World:remove(self._jecs[player].Character, JecsCommon.Tags.Alive)
 			self.OnDied:FireDeferred(player)
 			if self._diedEvents[player] then
 				self._diedEvents[player]:FireDeferred()
 			end
 		end)
 
+		local jecsData = self._jecs[player]
+		JecsCommon.World:set(jecsData.Character, JecsCommon.Components.Character, character)
+		JecsCommon.World:add(jecsData.Character, JecsCommon.Tags.Alive)
 		self:_InitializeCharacter(character, player)
 		self.OnCharacterAdded:FireDeferred(character, player)
 		self.Characters[player] = character
@@ -80,9 +90,11 @@ function PlayerService:KnitInit()
 		player.CharacterRemoving:Connect(function()
 			self.Characters[player] = nil
 			local jecsData = self._jecs[player]
-			JecsCommon.World:remove(jecsData.Character, JecsCommon.Components.Character)
-			JecsCommon.World:remove(jecsData.Character, JecsCommon.Tags.Alive)
-			JecsCommon.World:remove(jecsData.Gravity, JecsCommon.Components.Gravity)
+			if jecsData then
+				JecsCommon.World:remove(jecsData.Character, JecsCommon.Components.Character)
+				JecsCommon.World:remove(jecsData.Character, JecsCommon.Tags.Alive)
+				JecsCommon.World:remove(jecsData.Gravity, JecsCommon.Components.Gravity)
+			end
 		end)
 	end)
 
@@ -107,10 +119,22 @@ function PlayerService:KnitInit()
 	end)
 end
 
+function PlayerService:KnitStart()
+	local self = PlayerService
+	self.Client.OnResetRequested:Connect(function(player)
+		local humanoid = CharacterHelper.GetHumanoid(player)
+		if humanoid and humanoid.EvaluateStateMachine then
+			humanoid.Health = 0
+		else
+			self:LoadCharacter(player)
+		end
+	end)
+end
+
 -- Loads the player's character if not already loaded, then returns it.
-function PlayerService:LoadCharacter(player: Player, force: boolean?, timeout: number?): UsableCharacter?
+function PlayerService:LoadCharacter(player: Player, timeout: number?, onlyLoadIfNeeded: boolean?): UsableCharacter?
 	local character = self.Characters[player]
-	if not force and character then
+	if onlyLoadIfNeeded == true and character then
 		return character
 	end
 
@@ -166,6 +190,7 @@ function PlayerService:PlayerDied(player: Player): Signal<>
 end
 
 function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player)
+	local self = PlayerService
 	local rootPart = character.HumanoidRootPart
 	do -- Create custom movement attached, and custom gravity force.
 		local movementAttachment: Attachment = (ServerStorage :: any).Assets.Character.MovementAttachment:Clone()
@@ -173,7 +198,7 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		movementAttachment.Parent = rootPart
 		gravityForce.Attachment0 = movementAttachment
 		gravityForce.Parent = rootPart
-		-- TODO: register with jecs
+		JecsCommon.World:set(self._jecs[player].Gravity, JecsCommon.Components.Gravity, gravityForce)
 	end
 
 	do -- Create custom movement controller.
@@ -194,28 +219,6 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		groundSensor.Parent = rootPart
 		controller.Parent = character
 	end
-	-- local attachment = Instance.new("Attachment")
-	-- local force = Instance.new("VectorForce")
-	-- force.Attachment0 = attachment
-	-- attachment.Parent = character.HumanoidRootPart
-	-- force.Parent = character.HumanoidRootPart
-	-- -- TODO: need to handle resetting this whenever the player respawns
-	-- JecsCommon.World:set(JecsCommon.World:entity(), JecsCommon.Components.Gravity, force)
-
-	-- do -- Handle custom character controller.
-	-- 	-- Create the controller objects.
-	-- 	-- TODO: better organize code
-	-- 	local manager = Instance.new("ControllerManager")
-	-- 	local groundController = Instance.new("GroundController")
-	-- 	local airController = Instance.new("AirController")
-	-- 	local groundSensor = Instance.new("ControllerPartSensor")
-	-- 	groundSensor.SearchDistance = (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
-	-- 	groundController.GroundOffset = character.Humanoid.HipHeight
-	-- 	manager.RootPart = character.HumanoidRootPart
-	-- 	airController.Parent = manager
-	-- 	groundSensor.Parent = character.HumanoidRootPart
-	-- 	manager.Parent = character
-	-- end
 end
 
 return PlayerService

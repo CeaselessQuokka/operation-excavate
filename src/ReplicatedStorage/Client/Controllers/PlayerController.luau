@@ -8,7 +8,6 @@ local Workspace = game:GetService("Workspace")
 
 --- Imports ---
 local CameraHelper = require(ReplicatedStorage.Shared.Helpers.CameraHelper)
-local Jecs = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
@@ -92,9 +91,7 @@ function PlayerController:CharacterAdded(callback: (character: UsableCharacter) 
 	return self.OnCharacterAdded:Connect(callback)
 end
 
--- TODO: replace character with "from", that way it supports any path (should make this a general utility)
 function PlayerController:WaitForInstance<T>(query: string, character: UsableCharacter?): T?
-	local s = os.clock()
 	-- Resolve character.
 	local self = PlayerController
 	character = character or self.Character or localPlayer.CharacterAdded:Wait()
@@ -260,7 +257,7 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 			return
 		end
 
-		local movementAttachment = self:WaitForInstance<<Attachment>>("Attachment#GravityAttachment", character)
+		local movementAttachment = self:WaitForInstance<<Attachment>>("Attachment#MovementAttachment", character)
 		if not movementAttachment then
 			return
 		end
