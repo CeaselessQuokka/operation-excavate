@@ -80,7 +80,7 @@
 			"",
 			"local SystemScheduler = require(script.Parent)",
 			"",
-			"local Common = require(ReplicatedStorage.Shared.Common.Jecs)",
+			"local Common = require(ReplicatedStorage.Shared.Common.JecsCommon)",
 			"",
 			"--- Types ---",
 			"",

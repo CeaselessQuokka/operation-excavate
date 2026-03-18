@@ -7,7 +7,7 @@ local StudioTestService = game:GetService("StudioTestService")
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 local SystemScheduler = require(script.Parent)
 
-local JecsCommon = require(ReplicatedStorage.Shared.Common.Jecs)
+local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 
 --- Variables ---
 local GRAVITY = -196.2
@@ -21,42 +21,42 @@ local Gravity = Components.Gravity
 local Climbing = Tags.Climbing
 
 --- Gravity System ---
-do
-	local Item = World:component() :: Jecs.Id<{
-		Type: string,
-	}>
-	local ItemChunk = World:component() :: Jecs.Id<{
-		Center: Vector3,
-		MaxItems: number,
-	}>
+-- do
+-- 	local Item = World:component() :: Jecs.Id<{
+-- 		Type: string,
+-- 	}>
+-- 	local ItemChunk = World:component() :: Jecs.Id<{
+-- 		Center: Vector3,
+-- 		MaxItems: number,
+-- 	}>
 
-	local OwnedBy = Jecs.tag()
-	local Private = Jecs.tag()
+-- 	local OwnedBy = Jecs.tag()
+-- 	local Private = Jecs.tag()
 
-	local player = World:entity()
+-- 	local player = World:entity()
 
-	local chunk1 = World:entity()
-	World:set(chunk1, ItemChunk, { Center = Vector3.new(0, 0, 0), MaxItems = 10 })
-	World:add(chunk1, Private)
+-- 	local chunk1 = World:entity()
+-- 	World:set(chunk1, ItemChunk, { Center = Vector3.new(0, 0, 0), MaxItems = 10 })
+-- 	World:add(chunk1, Private)
 
-	local playerOwns = Jecs.pair(OwnedBy, player)
-	World:add(chunk1, playerOwns)
+-- 	local playerOwns = Jecs.pair(OwnedBy, player)
+-- 	World:add(chunk1, playerOwns)
 
-	for index = 1, math.random(1, 10) do
-		local item = World:entity()
-		World:set(item, Item, { Type = "Dirt" })
-		World:add(item, Jecs.pair(Jecs.ChildOf, chunk1))
-	end
+-- 	for index = 1, math.random(1, 10) do
+-- 		local item = World:entity()
+-- 		World:set(item, Item, { Type = "Dirt" })
+-- 		World:add(item, Jecs.pair(Jecs.ChildOf, chunk1))
+-- 	end
 
-	for entity, chunk in World:query(ItemChunk) do
-		print("Chunk:", entity, chunk.Center, chunk.MaxItems)
-	end
-	for entity, item in World:query(Item) do
-		print("Item:", entity, item.Type)
-	end
-	task.wait()
-	StudioTestService:EndTest(true)
-end
+-- 	for entity, chunk in World:query(ItemChunk) do
+-- 		print("Chunk:", entity, chunk.Center, chunk.MaxItems)
+-- 	end
+-- 	for entity, item in World:query(Item) do
+-- 		print("Item:", entity, item.Type)
+-- 	end
+-- 	-- task.wait()
+-- 	-- StudioTestService:EndTest(true)
+-- end
 local gravityQuery = World:query(Gravity):without(Climbing):cached():archetypes()
 return (
 	SystemScheduler.Schedule(function(dt: number)

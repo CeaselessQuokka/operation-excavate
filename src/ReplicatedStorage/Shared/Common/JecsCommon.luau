@@ -3,9 +3,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 --- Types ---
+type UsableCharacter = CharacterHelper.UsableCharacter
 
 --- Variables ---
 local Climbing = Jecs.tag()
@@ -22,6 +24,9 @@ local World = Jecs.world(true)
 return {
 	World = World,
 	Components = {
+		-- Player Characters
+		Character = World:component() :: Jecs.Id<UsableCharacter?>,
+
 		-- Climbing System
 		Climbable = World:component() :: Jecs.Id<{
 			ClimbSpeedMultiplier: number,
@@ -29,7 +34,7 @@ return {
 		}?>,
 
 		-- Gravity System
-		Gravity = World:component() :: Jecs.Id<VectorForce>,
+		Gravity = World:component() :: Jecs.Id<VectorForce?>,
 
 		-- Items
 		Item = World:component() :: Jecs.Id<{

@@ -8,7 +8,7 @@ local Workspace = game:GetService("Workspace")
 
 --- Imports ---
 local CameraHelper = require(ReplicatedStorage.Shared.Helpers.CameraHelper)
-local Jecs = require(ReplicatedStorage.Shared.Common.Jecs)
+local Jecs = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 

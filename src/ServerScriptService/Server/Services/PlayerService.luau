@@ -2,10 +2,11 @@
 --- Services ---
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 --- Imports ---
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
-local JecsCommon = require(ReplicatedStorage.Shared.Common.Jecs)
+local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
@@ -23,7 +24,7 @@ local PlayerService = {
 	Name = "PlayerService",
 
 	Characters = {} :: { [Player]: UsableCharacter }, -- Note: Characters is a bit of a misnomer; these are UsableCharacters.
-	_jecsCharacters = {} :: { [Player]: Jecs.Entity<UsableCharacter> }, -- For storing character entities in Jecs.
+	_jecs = {} :: { [Player]: { Character: Jecs.Id, Gravity: Jecs.Id } },
 
 	_characterAddedEvents = {} :: { [Player]: Signal<UsableCharacter, Player> },
 	_diedEvents = {} :: { [Player]: Signal<> },
@@ -66,11 +67,22 @@ function PlayerService:KnitInit()
 	end
 
 	self:PlayerAdded(function(player)
+		do -- Register with Jecs.
+			self._jecs[player] = {
+				Character = JecsCommon.World:entity(),
+				Gravity = JecsCommon.World:entity(),
+			}
+		end
+
 		player.CharacterAdded:Connect(function(character)
 			OnCharacterAdded(character :: UsableCharacter, player)
 		end)
 		player.CharacterRemoving:Connect(function()
 			self.Characters[player] = nil
+			local jecsData = self._jecs[player]
+			JecsCommon.World:remove(jecsData.Character, JecsCommon.Components.Character)
+			JecsCommon.World:remove(jecsData.Character, JecsCommon.Tags.Alive)
+			JecsCommon.World:remove(jecsData.Gravity, JecsCommon.Components.Gravity)
 		end)
 	end)
 
@@ -87,6 +99,11 @@ function PlayerService:KnitInit()
 		if characterAddedEvent then
 			characterAddedEvent:Destroy()
 		end
+
+		local jecsData = self._jecs[player]
+		self._jecs[player] = nil
+		JecsCommon.World:delete(jecsData.Character)
+		JecsCommon.World:delete(jecsData.Gravity)
 	end)
 end
 
@@ -149,42 +166,56 @@ function PlayerService:PlayerDied(player: Player): Signal<>
 end
 
 function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player)
-	local attachment = Instance.new("Attachment")
-	local force = Instance.new("VectorForce")
-	attachment.Name = "GravityAttachment"
-	attachment.Axis = Vector3.new(0, 0, -1)
-	force.Force = vector.zero :: any
-	force.RelativeTo = Enum.ActuatorRelativeTo.World
-	force.Attachment0 = attachment
-	attachment.Parent = character.HumanoidRootPart
-	force.Parent = character.HumanoidRootPart
-	-- TODO: need to handle resetting this whenever the player respawns
-	JecsCommon.World:set(JecsCommon.World:entity(), JecsCommon.Components.Gravity, force)
-
-	do -- Handle custom character controller.
-		-- Create the controller objects.
-		-- TODO: better organize code
-		local manager = Instance.new("ControllerManager")
-		local groundController = Instance.new("GroundController")
-		local airController = Instance.new("AirController")
-		local groundSensor = Instance.new("ControllerPartSensor")
-		airController.MoveMaxForce = 1000
-		airController.BalanceRigidityEnabled = true
-		airController.MaintainAngularMomentum = false
-		groundController.BalanceRigidityEnabled = true
-		groundSensor.SearchDistance = (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
-		groundController.GroundOffset = character.Humanoid.HipHeight
-		groundSensor.Name = "GroundSensor"
-		groundSensor.UpdateType = Enum.SensorUpdateType.Manual
-		manager.GroundSensor = groundSensor
-		manager.RootPart = character.HumanoidRootPart
-		manager.BaseTurnSpeed = 12
-		manager.ActiveController = groundController
-		groundController.Parent = manager
-		airController.Parent = manager
-		groundSensor.Parent = character.HumanoidRootPart
-		manager.Parent = character
+	local rootPart = character.HumanoidRootPart
+	do -- Create custom movement attached, and custom gravity force.
+		local movementAttachment: Attachment = (ServerStorage :: any).Assets.Character.MovementAttachment:Clone()
+		local gravityForce: VectorForce = (ServerStorage :: any).Assets.Character.Gravity:Clone()
+		movementAttachment.Parent = rootPart
+		gravityForce.Attachment0 = movementAttachment
+		gravityForce.Parent = rootPart
+		-- TODO: register with jecs
 	end
+
+	do -- Create custom movement controller.
+		local controller: ControllerManager & {
+			AirController: AirController,
+			GroundController: GroundController,
+			GroundSensor: ControllerPartSensor,
+		} = (
+			ServerStorage :: any
+		).Assets.Character.ControllerManager:Clone()
+		local airController = controller.AirController
+		local groundController = controller.GroundController
+		local groundSensor = controller.GroundSensor
+		groundSensor.SearchDistance = (rootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
+		groundController.GroundOffset = character.Humanoid.HipHeight
+		controller.RootPart = rootPart
+		airController.Parent = controller
+		groundSensor.Parent = rootPart
+		controller.Parent = character
+	end
+	-- local attachment = Instance.new("Attachment")
+	-- local force = Instance.new("VectorForce")
+	-- force.Attachment0 = attachment
+	-- attachment.Parent = character.HumanoidRootPart
+	-- force.Parent = character.HumanoidRootPart
+	-- -- TODO: need to handle resetting this whenever the player respawns
+	-- JecsCommon.World:set(JecsCommon.World:entity(), JecsCommon.Components.Gravity, force)
+
+	-- do -- Handle custom character controller.
+	-- 	-- Create the controller objects.
+	-- 	-- TODO: better organize code
+	-- 	local manager = Instance.new("ControllerManager")
+	-- 	local groundController = Instance.new("GroundController")
+	-- 	local airController = Instance.new("AirController")
+	-- 	local groundSensor = Instance.new("ControllerPartSensor")
+	-- 	groundSensor.SearchDistance = (character.HumanoidRootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
+	-- 	groundController.GroundOffset = character.Humanoid.HipHeight
+	-- 	manager.RootPart = character.HumanoidRootPart
+	-- 	airController.Parent = manager
+	-- 	groundSensor.Parent = character.HumanoidRootPart
+	-- 	manager.Parent = character
+	-- end
 end
 
 return PlayerService

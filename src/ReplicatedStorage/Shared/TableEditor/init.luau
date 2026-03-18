@@ -8672,7 +8672,6 @@ function TableEditor.ServerView(
 	end
 
 	if #targetPlayers == 0 then
-		warn("[TableEditor.ServerView] No valid players to send to")
 		return {}
 	end
 

@@ -3,9 +3,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local Jabby = require(ReplicatedStorage.Packages.Jabby)
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
 local LoadingHelper = require(ReplicatedStorage.Shared.Helpers.LoadingHelper)
+
+local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 
 --- Server Initialization ---
 -- Load Knit services.
@@ -17,6 +20,15 @@ Knit.Start():expect()
 -- Load server and shared components.
 LoadingHelper.LoadModules(script.Components)
 LoadingHelper.LoadModules(ReplicatedStorage.Shared.Components)
+
+-- Initialize Jabby.
+Jabby.register({
+	applet = Jabby.applets.world,
+	name = "world",
+	configuration = {
+		world = JecsCommon.World,
+	},
+})
 
 -- --!strict
 -- --- Services ---
