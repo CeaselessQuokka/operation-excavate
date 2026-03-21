@@ -7,27 +7,24 @@ local RunService = game:GetService("RunService")
 --- Types ---
 export type RemoteInstance = RemoteEvent | RemoteFunction
 export type Config = {
-	-- The cooldown period for firing the remote from the current run context.
+	-- The cooldown period for firing the remote per request.
 	CooldownPerFire: number?,
 
-	-- The period in which you can send MaxRequestsPerPeriod amount of requests. Applies to the current run context.
+	-- The period in which you can send MaxRequestsPerPeriod amount of requests.
 	RequestPeriod: number?,
 
-	-- The max amount of requests you can send in the RequestPeriod. Applies to the current run context.
+	-- The max amount of requests you can send in the RequestPeriod.
 	MaxRequestsPerPeriod: number?,
 }
 
 export type ServerApi<Params..., Return...> = {
-	Fire: (self: Remote<Params..., Return...>, player: Player, Params...) -> Return...,
-	FireAll: (self: Remote<Params..., Return...>, Params...) -> (),
-	Connect: (
-		self: Remote<Params..., Return...>,
-		handler: (player: Player, Params...) -> Return...
-	) -> RBXScriptConnection?,
+	Fire: (self: Remote, player: Player, Params...) -> Return...,
+	FireAll: (self: Remote, Params...) -> (),
+	Connect: (self: Remote, handler: (player: Player, Params...) -> Return...) -> RBXScriptConnection?,
 }
 export type ClientApi<Params..., Return...> = {
-	Fire: (self: Remote<Params..., Return...>, Params...) -> Return...,
-	Connect: (self: Remote<Params..., Return...>, handler: (Params...) -> Return...) -> RBXScriptConnection?,
+	Fire: (self: Remote, Params...) -> Return...,
+	Connect: (self: Remote, handler: (Params...) -> Return...) -> RBXScriptConnection?,
 }
 
 --- Variables ---
@@ -50,7 +47,7 @@ end
 
 local DEFAULT_CONFIG: Config = {}
 
-local remotes: { [string]: Remote<...any, ...any> } = {}
+local remotes: { [string]: Remote } = {}
 
 --- Functions ---
 local function AwaitRemoteInstance(name: string): RemoteInstance
@@ -66,9 +63,9 @@ end
 local Remote = {}
 Remote.__index = Remote
 
-export type Remote<Params..., Return...> = setmetatable<
+export type Remote = setmetatable<
 	{
-		Instance: RemoteInstance, -- The underlying RemoteEvent or RemoteFunction instance. The type is just a hack to get proper typing.
+		Instance: RemoteInstance, -- The underlying RemoteEvent or RemoteFunction instance.
 		Config: Config?, -- Only respected by server.
 		_cooldowns: {
 			[Player]: {
@@ -77,12 +74,10 @@ export type Remote<Params..., Return...> = setmetatable<
 
 				-- The amount of requests sent in the current RequestPeriod.
 				-- Resets after RequestPeriod seconds have passed since the first
-				-- request in the period. Nil if no requests have been made in the
-				-- current run context or if RequestPeriod is not configured.
+				-- request in the period.
 				RequestsThisPeriod: number,
 
 				-- Timestamp in UTC seconds of when the current RequestPeriod will reset.
-				-- Nil if no requests have been made in the current run context or if RequestPeriod is not configured.
 				PeriodResetTime: number,
 			},
 		},
@@ -93,7 +88,7 @@ export type Remote<Params..., Return...> = setmetatable<
 	},
 	typeof(Remote)
 >
-function Remote.Event<Params..., Return...>(name: string, config: Config?): Remote<Params..., Return...>
+function Remote.Event(name: string, config: Config?): Remote
 	assert(config == nil or IS_SERVER, "Config can only be set for the server")
 	if remotes[name] then
 		return remotes[name]
@@ -110,7 +105,7 @@ function Remote.Event<Params..., Return...>(name: string, config: Config?): Remo
 		remoteInstance = AwaitRemoteInstance(name)
 	end
 
-	local self: Remote<Params..., Return...> = setmetatable({
+	local self: Remote = setmetatable({
 		Instance = remoteInstance,
 		Config = config,
 		_cooldowns = {},
@@ -122,7 +117,7 @@ function Remote.Event<Params..., Return...>(name: string, config: Config?): Remo
 	return self
 end
 
-function Remote.Function<Params..., Return...>(name: string, config: Config?): Remote<Params..., Return...>
+function Remote.Function(name: string, config: Config?): Remote
 	assert(config == nil or IS_SERVER, "Config can only be set for the server")
 	if remotes[name] then
 		return remotes[name]
@@ -139,7 +134,7 @@ function Remote.Function<Params..., Return...>(name: string, config: Config?): R
 		remoteInstance = AwaitRemoteInstance(name)
 	end
 
-	local self: Remote<Params..., Return...> = setmetatable({
+	local self: Remote = setmetatable({
 		Instance = remoteInstance,
 		Config = config,
 		_cooldowns = {},
@@ -151,7 +146,7 @@ function Remote.Function<Params..., Return...>(name: string, config: Config?): R
 	return self
 end
 
-function Remote.Fire<Params..., Return...>(self: Remote<Params..., Return...>, ...: Params...): Return...
+function Remote.Fire<Params..., Return...>(self: Remote, ...: Params...): Return...
 	local isEvent = self.Instance.ClassName == "RemoteEvent"
 	if IS_SERVER then
 		local player: Player = ... :: any
@@ -169,7 +164,7 @@ function Remote.Fire<Params..., Return...>(self: Remote<Params..., Return...>, .
 	end
 end
 
-function Remote.FireAll<Params..., Return...>(self: Remote<Params..., Return...>, ...: Params...)
+function Remote.FireAll<Params...>(self: Remote, ...: Params...)
 	assert(IS_SERVER, "FireAll can only be called from the server")
 	assert(self.Instance.ClassName == "RemoteEvent", "FireAll can only be called on RemoteEvents")
 
@@ -177,7 +172,7 @@ function Remote.FireAll<Params..., Return...>(self: Remote<Params..., Return...>
 	remoteInstance:FireAllClients(...)
 end
 
-function Remote.Connect<Params..., Return...>(self: Remote<Params..., Return...>, handler: (Params...) -> Return...): RBXScriptConnection?
+function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...) -> Return...): RBXScriptConnection?
 	if IS_SERVER then
 		if self.Instance.ClassName == "RemoteEvent" then
 			return (self.Instance :: RemoteEvent).OnServerEvent:Connect(function(player: Player, ...: Params...)
@@ -227,9 +222,21 @@ function Remote.Connect<Params..., Return...>(self: Remote<Params..., Return...>
 	return nil
 end
 
-function Remote._IsOnCooldown<Params..., Return...>(self: Remote<Params..., Return...>, player: Player): boolean
+function Remote._IsOnCooldown(self: Remote, player: Player): boolean
+	if not player.Parent then
+		return true
+	end
+
 	local config: Config = self.Config or DEFAULT_CONFIG
 	local cooldownData = self._cooldowns[player]
+	if not cooldownData then
+		cooldownData = {
+			LastFireTime = 0,
+			RequestsThisPeriod = 0,
+			PeriodResetTime = 0,
+		}
+		self._cooldowns[player] = cooldownData
+	end
 	if config.CooldownPerFire then
 		if os.time() < cooldownData.LastFireTime + config.CooldownPerFire then
 			warn(`Remote "{self.Instance}" is on cooldown; cannot fire for player "{player}" ({player.UserId})`)
@@ -252,15 +259,6 @@ function Remote._IsOnCooldown<Params..., Return...>(self: Remote<Params..., Retu
 end
 
 do -- Handle cooldown (un)populating.
-	Players.PlayerAdded:Connect(function(player)
-		for _, remote in remotes do
-			remote._cooldowns[player] = {
-				LastFireTime = 0,
-				RequestsThisPeriod = 0,
-				PeriodResetTime = 0,
-			}
-		end
-	end)
 	Players.PlayerRemoving:Connect(function(player)
 		for _, remote in remotes do
 			remote._cooldowns[player] = nil
