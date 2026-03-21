@@ -6,191 +6,32 @@ local ServerStorage = game:GetService("ServerStorage")
 
 --- Imports ---
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
-local Knit = require(ReplicatedStorage.Packages.Knit)
+local Remote = require(ReplicatedStorage.Shared.Common.Classes.Remote)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local ThreadingHelper = require(ReplicatedStorage.Shared.Helpers.ThreadingHelper)
 
 local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
-local Types = require(ReplicatedStorage.Shared.Common.Types)
 
 --- Types ---
-type Character = CharacterHelper.Character
 type UsableCharacter = CharacterHelper.UsableCharacter
 type Signal<Params...> = Signal.Signal<Params...>
 type SignalConnection = { Disconnect: (any) -> () }
+type ServerApi<Params..., Return...> = Remote.ServerApi<Params..., Return...>
 
---- Player Service ---
-local PlayerService = {
-	Name = "PlayerService",
-	Client = {
-		-- Client to Server
-		OnResetRequested = Knit.CreateSignal() :: Types.ServerRemoteSignal<()>,
-	},
+--- Variables ---
+local World = JecsCommon.World
+local CharacterComponent = JecsCommon.Components.Character
+local GravityComponent = JecsCommon.Components.Gravity
+local AliveTag = JecsCommon.Tags.Alive
 
-	Characters = {} :: { [Player]: UsableCharacter }, -- Note: Characters is a bit of a misnomer; these are UsableCharacters.
-	_jecs = {} :: { [Player]: { Character: Jecs.Id, Gravity: Jecs.Id } },
+local jecs = {} :: { [Player]: { Character: Jecs.Id, Gravity: Jecs.Id } }
+local characterAddedEvents = {} :: { [Player]: Signal<UsableCharacter, Player> }
+local diedEvents = {} :: { [Player]: Signal<> }
 
-	_characterAddedEvents = {} :: { [Player]: Signal<UsableCharacter, Player> },
-	_diedEvents = {} :: { [Player]: Signal<> },
-
-	OnCharacterAdded = Signal.new() :: Signal<UsableCharacter, Player>,
-	OnDied = Signal.new() :: Signal<Player>,
-}
-Knit.CreateService(PlayerService)
-
-function PlayerService:KnitInit()
-	local self = PlayerService
-	local function OnCharacterAdded(character: UsableCharacter, player: Player)
-		local usable = false
-		while player.Parent and character == player.Character :: any do
-			task.wait()
-			if CharacterHelper.IsUsable(character) then
-				usable = true
-				break
-			end
-		end
-		if not usable then
-			return
-		end
-
-		character.Humanoid.Died:Once(function()
-			self.Characters[player] = nil
-			JecsCommon.World:remove(self._jecs[player].Character, JecsCommon.Tags.Alive)
-			self.OnDied:FireDeferred(player)
-			if self._diedEvents[player] then
-				self._diedEvents[player]:FireDeferred()
-			end
-		end)
-
-		local jecsData = self._jecs[player]
-		JecsCommon.World:set(jecsData.Character, JecsCommon.Components.Character, character)
-		JecsCommon.World:add(jecsData.Character, JecsCommon.Tags.Alive)
-		self:_InitializeCharacter(character, player)
-		self.OnCharacterAdded:FireDeferred(character, player)
-		self.Characters[player] = character
-		local addedSignal = self._characterAddedEvents[player]
-		if addedSignal then
-			addedSignal:FireDeferred(character, player)
-		end
-	end
-
-	self:PlayerAdded(function(player)
-		do -- Register with Jecs.
-			self._jecs[player] = {
-				Character = JecsCommon.World:entity(),
-				Gravity = JecsCommon.World:entity(),
-			}
-		end
-
-		player.CharacterAdded:Connect(function(character)
-			OnCharacterAdded(character :: UsableCharacter, player)
-		end)
-		player.CharacterRemoving:Connect(function()
-			self.Characters[player] = nil
-			local jecsData = self._jecs[player]
-			if jecsData then
-				JecsCommon.World:remove(jecsData.Character, JecsCommon.Components.Character)
-				JecsCommon.World:remove(jecsData.Character, JecsCommon.Tags.Alive)
-				JecsCommon.World:remove(jecsData.Gravity, JecsCommon.Components.Gravity)
-			end
-		end)
-	end)
-
-	Players.PlayerRemoving:Connect(function(player)
-		self.Characters[player] = nil
-		local diedEvent = self._diedEvents[player]
-		self._diedEvents[player] = nil
-		if diedEvent then
-			diedEvent:Destroy()
-		end
-
-		local characterAddedEvent = self._characterAddedEvents[player]
-		self._characterAddedEvents[player] = nil
-		if characterAddedEvent then
-			characterAddedEvent:Destroy()
-		end
-
-		local jecsData = self._jecs[player]
-		self._jecs[player] = nil
-		JecsCommon.World:delete(jecsData.Character)
-		JecsCommon.World:delete(jecsData.Gravity)
-	end)
-end
-
-function PlayerService:KnitStart()
-	local self = PlayerService
-	self.Client.OnResetRequested:Connect(function(player)
-		local humanoid = CharacterHelper.GetHumanoid(player)
-		if humanoid and humanoid.EvaluateStateMachine then
-			humanoid.Health = 0
-		else
-			self:LoadCharacter(player)
-		end
-	end)
-end
-
--- Loads the player's character if not already loaded, then returns it.
-function PlayerService:LoadCharacter(player: Player, timeout: number?, onlyLoadIfNeeded: boolean?): UsableCharacter?
-	local character = self.Characters[player]
-	if onlyLoadIfNeeded == true and character then
-		return character
-	end
-
-	self.Characters[player] = nil
-	player:LoadCharacterAsync()
-	return self:GetCharacter(player, true, timeout)
-end
-
-function PlayerService:GetCharacter(player: Player, await: boolean?, timeout: number?): UsableCharacter?
-	local self = PlayerService
-	local character = self.Characters[player]
-	if character then
-		return character
-	elseif not await then
-		return nil
-	end
-
-	timeout = timeout or 5
-	local startTime = os.clock()
-	while player.Parent and os.clock() - startTime < timeout and not self.Characters[player] do
-		ThreadingHelper.WaitForAny(timeout, self.OnCharacterAdded, player.AncestryChanged)
-	end
-	return self.Characters[player]
-end
-
-function PlayerService:PlayerAdded(callback: (Player) -> ())
-	Players.PlayerAdded:Connect(callback)
-	for _, player in Players:GetPlayers() do
-		task.defer(callback, player)
-	end
-end
-
-function PlayerService:CharacterAdded(player: Player, callback: (UsableCharacter, Player) -> ()): SignalConnection
-	local self = PlayerService
-	local character = self.Characters[player]
-	if character then
-		task.defer(callback, character, player)
-	end
-	local addedSignal = self._characterAddedEvents[player]
-	if not addedSignal then
-		addedSignal = Signal.new()
-		self._characterAddedEvents[player] = addedSignal
-	end
-	return addedSignal:Connect(callback)
-end
-
-function PlayerService:PlayerDied(player: Player): Signal<>
-	local self = PlayerService
-	if not self._diedEvents[player] then
-		self._diedEvents[player] = Signal.new()
-	end
-	return self._diedEvents[player]
-end
-
-function PlayerService:_InitializeCharacter(character: UsableCharacter, player: Player)
-	local self = PlayerService
+--- Functions ---
+function InitializeCharacter(character: UsableCharacter, player: Player)
 	local rootPart = character.HumanoidRootPart
 	do -- Create custom movement attached, and custom gravity force.
 		local movementAttachment: Attachment = (ServerStorage :: any).Assets.Character.MovementAttachment:Clone()
@@ -198,7 +39,7 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		movementAttachment.Parent = rootPart
 		gravityForce.Attachment0 = movementAttachment
 		gravityForce.Parent = rootPart
-		JecsCommon.World:set(self._jecs[player].Gravity, JecsCommon.Components.Gravity, gravityForce)
+		World:set(jecs[player].Gravity, GravityComponent, gravityForce)
 	end
 
 	do -- Create custom movement controller.
@@ -219,6 +60,160 @@ function PlayerService:_InitializeCharacter(character: UsableCharacter, player: 
 		groundSensor.Parent = rootPart
 		controller.Parent = character
 	end
+end
+
+--- Player Service ---
+local PlayerService = {
+	Characters = {} :: { [Player]: UsableCharacter },
+
+	OnCharacterAdded = Signal.new() :: Signal<UsableCharacter, Player>,
+	OnDied = Signal.new() :: Signal<Player>,
+
+	OnResetRequested = Remote.Event("OnResetRequested", {
+		CooldownPerFire = 10, -- TODO: change to 5 after testing.
+	}) :: ServerApi<()>,
+}
+
+-- Loads the player's character if not already loaded, then returns it.
+function PlayerService.LoadCharacter(player: Player, timeout: number?, onlyLoadIfNeeded: boolean?): UsableCharacter?
+	local character = PlayerService.Characters[player]
+	if onlyLoadIfNeeded == true and CharacterHelper.IsUsable(character) then
+		return character
+	end
+
+	PlayerService.Characters[player] = nil
+	player:LoadCharacterAsync()
+	return PlayerService.GetCharacter(player, true, timeout)
+end
+
+function PlayerService.GetCharacter(player: Player, await: boolean?, timeout: number?): UsableCharacter?
+	local character = PlayerService.Characters[player]
+	if character then
+		return character
+	elseif not await then
+		return nil
+	end
+
+	timeout = timeout or 6
+	local startTime = os.clock()
+	while player.Parent and os.clock() - startTime < timeout and not PlayerService.Characters[player] do
+		ThreadingHelper.WaitForAny(timeout, PlayerService.OnCharacterAdded, player.AncestryChanged)
+	end
+	return PlayerService.Characters[player]
+end
+
+function PlayerService.PlayerAdded(callback: (Player) -> ())
+	Players.PlayerAdded:Connect(callback)
+	for _, player in Players:GetPlayers() do
+		task.defer(callback, player)
+	end
+end
+
+function PlayerService.CharacterAdded(player: Player, callback: (UsableCharacter, Player) -> ()): SignalConnection
+	local character = PlayerService.Characters[player]
+	if character then
+		task.defer(callback, character, player)
+	end
+	local addedSignal = characterAddedEvents[player]
+	if not addedSignal then
+		addedSignal = Signal.new()
+		characterAddedEvents[player] = addedSignal
+	end
+	return addedSignal:Connect(callback)
+end
+
+function PlayerService.PlayerDied(player: Player): Signal<>
+	if not diedEvents[player] then
+		diedEvents[player] = Signal.new()
+	end
+	return diedEvents[player]
+end
+
+do
+	local function OnCharacterAdded(character: UsableCharacter, player: Player)
+		local usable = false
+		while player.Parent and character == player.Character :: any do
+			if CharacterHelper.IsUsable(character) then
+				usable = true
+				break
+			end
+			task.wait(1 / 15)
+		end
+		if not usable then
+			return
+		end
+
+		character.Humanoid.Died:Once(function()
+			PlayerService.Characters[player] = nil
+			World:remove(jecs[player].Character, AliveTag)
+			PlayerService.OnDied:FireDeferred(player)
+			if diedEvents[player] then
+				diedEvents[player]:FireDeferred()
+			end
+		end)
+
+		local jecsData = jecs[player]
+		World:set(jecsData.Character, CharacterComponent, character)
+		World:add(jecsData.Character, AliveTag)
+		InitializeCharacter(character, player)
+		PlayerService.OnCharacterAdded:FireDeferred(character, player)
+		PlayerService.Characters[player] = character
+		local addedSignal = characterAddedEvents[player]
+		if addedSignal then
+			addedSignal:FireDeferred(character, player)
+		end
+	end
+
+	PlayerService.PlayerAdded(function(player)
+		do -- Register with Jecs.
+			jecs[player] = {
+				Character = World:entity(),
+				Gravity = World:entity(),
+			}
+		end
+
+		player.CharacterAdded:Connect(function(character)
+			OnCharacterAdded(character :: UsableCharacter, player)
+		end)
+		player.CharacterRemoving:Connect(function()
+			PlayerService.Characters[player] = nil
+			local jecsData = jecs[player]
+			if jecsData then
+				World:remove(jecsData.Character, CharacterComponent)
+				World:remove(jecsData.Character, AliveTag)
+				World:remove(jecsData.Gravity, GravityComponent)
+			end
+		end)
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		PlayerService.Characters[player] = nil
+		local diedEvent = diedEvents[player]
+		diedEvents[player] = nil
+		if diedEvent then
+			diedEvent:Destroy()
+		end
+
+		local characterAddedEvent = characterAddedEvents[player]
+		characterAddedEvents[player] = nil
+		if characterAddedEvent then
+			characterAddedEvent:Destroy()
+		end
+
+		local jecsData = jecs[player]
+		jecs[player] = nil
+		World:delete(jecsData.Character)
+		World:delete(jecsData.Gravity)
+	end)
+
+	PlayerService.OnResetRequested:Connect(function(player)
+		local humanoid = CharacterHelper.GetHumanoid(player)
+		if humanoid and humanoid.EvaluateStateMachine then
+			humanoid.Health = 0
+		else
+			PlayerService.LoadCharacter(player)
+		end
+	end)
 end
 
 return PlayerService

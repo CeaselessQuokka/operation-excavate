@@ -359,6 +359,10 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 
 		-- Accumulate mouse/touch delta for camera rotation.
 		local rotateConnection = UserInputService.InputChanged:Connect(function(input, gameProcessed)
+			if gameProcessed then
+				return
+			end
+
 			if
 				input.UserInputType == Enum.UserInputType.MouseMovement
 				and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
@@ -374,7 +378,10 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 		end)
 
 		-- Zoom via scroll wheel.
-		local zoomConnection = UserInputService.InputChanged:Connect(function(input)
+		local zoomConnection = UserInputService.InputChanged:Connect(function(input, gameProcessed)
+			if gameProcessed then
+				return
+			end
 			if input.UserInputType == Enum.UserInputType.MouseWheel then
 				zoomLevel = math.clamp(zoomLevel - input.Position.Z * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM)
 			end
@@ -389,7 +396,10 @@ function PlayerController:_InitializeCharacter(character: UsableCharacter)
 				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
 			end
 		end)
-		local mbUpConn = UserInputService.InputEnded:Connect(function(input)
+		local mbUpConn = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+			if gameProcessed then
+				return
+			end
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
 				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			end

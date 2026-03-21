@@ -8,7 +8,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 --- Imports ---
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
-local PlayerService: typeof(require(ServerScriptService.Server.Services.PlayerService))
+local PlayerService = require(script.Parent.PlayerService)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.PlanetGenerator)
@@ -21,8 +21,6 @@ local PlanetService = {
 Knit.CreateService(PlanetService)
 
 function PlanetService:KnitStart()
-	PlayerService = Knit.GetService("PlayerService")
-
 	local fpsTable: { number } = table.create(60, task.wait())
 	local idx = 1
 	local nFrames = 1

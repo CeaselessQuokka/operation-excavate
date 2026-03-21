@@ -65,8 +65,8 @@ Remote.__index = Remote
 
 export type Remote = setmetatable<
 	{
-		Instance: RemoteInstance, -- The underlying RemoteEvent or RemoteFunction instance.
-		Config: Config?, -- Only respected by server.
+		_instance: RemoteInstance, -- The underlying RemoteEvent or RemoteFunction instance.
+		_config: Config?, -- Only respected by server.
 		_cooldowns: {
 			[Player]: {
 				-- Timestamp in UTC seconds of the last time this remote was fired from the current run context.
@@ -94,20 +94,20 @@ function Remote.Event(name: string, config: Config?): Remote
 		return remotes[name]
 	end
 
-	local remoteInstance: RemoteInstance
-	if IS_SERVER then
-		if not REMOTES_FOLDER:FindFirstChild(name) then
+	local remoteInstance: RemoteInstance = REMOTES_FOLDER:QueryDescendants(`>RemoteEvent#{name}`)[1] :: any
+	if not remoteInstance then
+		if IS_SERVER then
 			remoteInstance = Instance.new("RemoteEvent")
 			remoteInstance.Name = name
 			remoteInstance.Parent = REMOTES_FOLDER
+		else
+			remoteInstance = AwaitRemoteInstance(name)
 		end
-	else
-		remoteInstance = AwaitRemoteInstance(name)
 	end
 
 	local self: Remote = setmetatable({
-		Instance = remoteInstance,
-		Config = config,
+		_instance = remoteInstance,
+		_config = config,
 		_cooldowns = {},
 		_meta = {
 			TotalFires = 0,
@@ -123,20 +123,20 @@ function Remote.Function(name: string, config: Config?): Remote
 		return remotes[name]
 	end
 
-	local remoteInstance: RemoteInstance
-	if IS_SERVER then
-		if not REMOTES_FOLDER:FindFirstChild(name) then
+	local remoteInstance: RemoteInstance = REMOTES_FOLDER:QueryDescendants(`>RemoteFunction#{name}`)[1] :: any
+	if not remoteInstance then
+		if IS_SERVER then
 			remoteInstance = Instance.new("RemoteFunction")
 			remoteInstance.Name = name
 			remoteInstance.Parent = REMOTES_FOLDER
+		else
+			remoteInstance = AwaitRemoteInstance(name)
 		end
-	else
-		remoteInstance = AwaitRemoteInstance(name)
 	end
 
 	local self: Remote = setmetatable({
-		Instance = remoteInstance,
-		Config = config,
+		_instance = remoteInstance,
+		_config = config,
 		_cooldowns = {},
 		_meta = {
 			TotalFires = 0,
@@ -147,37 +147,37 @@ function Remote.Function(name: string, config: Config?): Remote
 end
 
 function Remote.Fire<Params..., Return...>(self: Remote, ...: Params...): Return...
-	local isEvent = self.Instance.ClassName == "RemoteEvent"
+	local isEvent = self._instance.ClassName == "RemoteEvent"
 	if IS_SERVER then
 		local player: Player = ... :: any
 		if isEvent then
-			(self.Instance :: RemoteEvent):FireClient(player, select(2, ...))
+			(self._instance :: RemoteEvent):FireClient(player, select(2, ...))
 		else
-			return (self.Instance :: RemoteFunction):InvokeClient(player, select(2, ...))
+			return (self._instance :: RemoteFunction):InvokeClient(player, select(2, ...))
 		end
 	else
 		if isEvent then
-			(self.Instance :: RemoteEvent):FireServer(...)
+			(self._instance :: RemoteEvent):FireServer(...)
 		else
-			return (self.Instance :: RemoteFunction):InvokeServer(...)
+			return (self._instance :: RemoteFunction):InvokeServer(...)
 		end
 	end
 end
 
 function Remote.FireAll<Params...>(self: Remote, ...: Params...)
 	assert(IS_SERVER, "FireAll can only be called from the server")
-	assert(self.Instance.ClassName == "RemoteEvent", "FireAll can only be called on RemoteEvents")
+	assert(self._instance.ClassName == "RemoteEvent", "FireAll can only be called on RemoteEvents")
 
-	local remoteInstance = self.Instance :: RemoteEvent
+	local remoteInstance = self._instance :: RemoteEvent
 	remoteInstance:FireAllClients(...)
 end
 
 function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...) -> Return...): RBXScriptConnection?
 	if IS_SERVER then
-		if self.Instance.ClassName == "RemoteEvent" then
-			return (self.Instance :: RemoteEvent).OnServerEvent:Connect(function(player: Player, ...: Params...)
+		if self._instance.ClassName == "RemoteEvent" then
+			return (self._instance :: RemoteEvent).OnServerEvent:Connect(function(player: Player, ...: Params...)
 				if not self:_IsOnCooldown(player) then
-					local config = self.Config or DEFAULT_CONFIG
+					local config = self._config or DEFAULT_CONFIG
 					local cooldownData = self._cooldowns[player]
 					if
 						config.RequestPeriod
@@ -193,10 +193,10 @@ function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...)
 				end
 			end)
 		else
-			local remoteInstance = self.Instance :: RemoteFunction
+			local remoteInstance = self._instance :: RemoteFunction
 			function remoteInstance.OnServerInvoke(player: Player, ...: Params...): Return...
 				if not self:_IsOnCooldown(player) then
-					local config = self.Config or DEFAULT_CONFIG
+					local config = self._config or DEFAULT_CONFIG
 					local cooldownData = self._cooldowns[player]
 					if
 						config.RequestPeriod
@@ -213,10 +213,10 @@ function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...)
 			end
 		end
 	else
-		if self.Instance.ClassName == "RemoteEvent" then
-			return (self.Instance :: RemoteEvent).OnClientEvent:Connect(handler :: any)
+		if self._instance.ClassName == "RemoteEvent" then
+			return (self._instance :: RemoteEvent).OnClientEvent:Connect(handler :: any)
 		else
-			(self.Instance :: RemoteFunction).OnClientInvoke = handler
+			(self._instance :: RemoteFunction).OnClientInvoke = handler
 		end
 	end
 	return nil
@@ -227,7 +227,7 @@ function Remote._IsOnCooldown(self: Remote, player: Player): boolean
 		return true
 	end
 
-	local config: Config = self.Config or DEFAULT_CONFIG
+	local config: Config = self._config or DEFAULT_CONFIG
 	local cooldownData = self._cooldowns[player]
 	if not cooldownData then
 		cooldownData = {
@@ -239,14 +239,14 @@ function Remote._IsOnCooldown(self: Remote, player: Player): boolean
 	end
 	if config.CooldownPerFire then
 		if os.time() < cooldownData.LastFireTime + config.CooldownPerFire then
-			warn(`Remote "{self.Instance}" is on cooldown; cannot fire for player "{player}" ({player.UserId})`)
+			warn(`Remote "{self._instance}" is on cooldown; cannot fire for player "{player}" ({player.UserId})`)
 			return true
 		end
 	elseif config.MaxRequestsPerPeriod and config.RequestPeriod then
 		if cooldownData.RequestsThisPeriod >= config.MaxRequestsPerPeriod then
 			if os.time() < cooldownData.PeriodResetTime then
 				warn(
-					`Remote "{self.Instance}" has exceeded the max requests per period; cannot fire for player "{player}" ({player.UserId})`
+					`Remote "{self._instance}" has exceeded the max requests per period; cannot fire for player "{player}" ({player.UserId})`
 				)
 				return true
 			else

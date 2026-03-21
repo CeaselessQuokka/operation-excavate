@@ -1,0 +1,47 @@
+{
+	"Service": {
+		"scope": "lua,luau",
+		"prefix": [
+			"service"
+		],
+		"description": "Generates a template service.",
+		"body": [
+			"--!strict",
+			"--- Services ---",
+			"local ReplicatedStorage = game:GetService(\"ReplicatedStorage\")",
+			"",
+			"--- Imports ---",
+			"local Jecs = require(ReplicatedStorage.Packages.Jecs)",
+			"local Remote = require(ReplicatedStorage.Shared.Common.Classes.Remote)",
+			"local Signal = require(ReplicatedStorage.Packages.Signal)",
+			"",
+			"local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)",
+			"",
+			"--- Types ---",
+			"type Signal<Params...> = Signal.Signal<Params...>",
+			"type SignalConnection = { Disconnect: (any) -> () }",
+			"type ServerApi<Params..., Return...> = Remote.ServerApi<Params..., Return...>",
+			"",
+			"--- Variables ---",
+			"local World = JecsCommon.World",
+			"",
+			"--- Functions ---",
+			"",
+			"--- ${2:$TM_FILENAME_BASE} Service ---",
+			"local ${1:$TM_FILENAME_BASE} = {",
+			"\tOnSignal = Signal.new() :: Signal<>,",
+			"",
+			"\tOnRemote = Remote.Event(\"OnRemoteExample\") :: ServerApi<()>,",
+			"}",
+			"",
+			"function ${1:$TM_FILENAME_BASE}.Method(...: any): ...any end",
+			"",
+			"do -- Service initialization.",
+			"\t${3}",
+			"end",
+			"",
+			"return ${1:$TM_FILENAME_BASE}",
+			""
+		]
+	}
+}

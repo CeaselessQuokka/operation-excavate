@@ -7,9 +7,8 @@
 
 --!strict
 --- Types ---
--- AnimationTracks and Tweens will first be stopped/cancelled before getting Destroyed.
 export type Trackable = thread | Callable | Disconnectable | Destroyable | Instance | RBXScriptConnection
-export type Callable = (self: any) -> ()
+export type Callable = (...any) -> ...any
 export type Disconnectable = { Disconnect: (self: any) -> () }
 export type Destroyable = { Destroy: (self: any) -> () }
 
@@ -27,35 +26,28 @@ end
 local Cleaner = {}
 Cleaner.__index = Cleaner
 
-export type Cleaner = typeof(setmetatable(
-	{} :: {
-		_tracked: { [Trackable]: any },
-	},
-	Cleaner
-))
+export type Cleaner = setmetatable<{
+	_tracked: { [Trackable]: any },
+}, typeof(Cleaner)>
 function Cleaner.new(): Cleaner
 	return setmetatable({ _tracked = {} }, Cleaner)
 end
 
 function Cleaner.Add<T>(self: Cleaner, trackable: T & Trackable, funcArg: any): T
 	if trackable == nil then
-		warn(debug.traceback("Attempt to Add nil Trackable"))
 		return trackable
 	end
 
-	local trackable = trackable :: any -- TODO: when new type system gets released, do this properly.
 	local tracked = self._tracked
 	if tracked[trackable] ~= nil then
-		warn(debug.traceback(`Attempt to Add duplicate Trackable: "{trackable}" ({typeof(trackable)})`, trackable))
+		warn(`Attempt to Add duplicate Trackable: "{trackable}" ({typeof(trackable)})`, trackable)
 		return trackable
 	end
-
 	tracked[trackable] = if funcArg == nil then NIL_SYMBOL else funcArg
 	return trackable
 end
 
 function Cleaner.Remove<T>(self: Cleaner, trackable: T & Trackable): boolean
-	local trackable = trackable :: any -- TODO: when new type system gets released, do this properly.
 	local funcArg = self._tracked[trackable]
 	if self:Unlink(trackable) then
 		self:_CleanTrackable(trackable, funcArg)
@@ -65,7 +57,6 @@ function Cleaner.Remove<T>(self: Cleaner, trackable: T & Trackable): boolean
 end
 
 function Cleaner.Unlink<T>(self: Cleaner, trackable: T & Trackable): boolean
-	local trackable = trackable :: any -- TODO: when new type system gets released, do this properly.
 	local tracked = self._tracked
 	if tracked[trackable] == nil then
 		return false
@@ -87,12 +78,12 @@ function Cleaner._CleanTrackable<T>(self: Cleaner, trackable: T & Trackable, fun
 	local function CleanupTable(trackable: any, funcArg: any)
 		local cleaner = trackable.Destroy or trackable.Disconnect
 		if cleaner then
-			cleaner(trackable)
+			(cleaner :: Callable)(trackable)
 		else
 			if funcArg ~= NIL_SYMBOL then
 				local cleanupFunction = trackable[funcArg]
 				if typeof(cleanupFunction) == "function" then
-					cleanupFunction(trackable)
+					(cleanupFunction :: Callable)(trackable)
 					return
 				else
 					warn(
@@ -111,15 +102,14 @@ function Cleaner._CleanTrackable<T>(self: Cleaner, trackable: T & Trackable, fun
 
 	local function GetSecondaryInstanceCleanupFunction(trackable: Instance): Callable?
 		if trackable:IsA("AnimationTrack") then
-			return trackable.Stop
+			return (trackable :: any).Stop
 		elseif trackable:IsA("Tween") then
-			return trackable.Cancel
+			return (trackable :: any).Cancel
 		else
 			return nil
 		end
 	end
 
-	local trackable = trackable :: any -- TODO: when new type system gets released, do this properly.
 	local typeOf = typeof(trackable)
 	if typeOf == "thread" then
 		pcall(task.cancel, trackable)
@@ -131,15 +121,15 @@ function Cleaner._CleanTrackable<T>(self: Cleaner, trackable: T & Trackable, fun
 	elseif typeOf == "table" then
 		task.spawn(CleanupTable, trackable, funcArg)
 	elseif typeOf == "RBXScriptConnection" then
-		trackable:Disconnect()
+		(trackable :: RBXScriptConnection):Disconnect()
 	elseif typeOf == "Instance" then
-		local trackable: Instance = trackable
-		local cleaner = GetSecondaryInstanceCleanupFunction(trackable)
+		local instanceTrackable: Instance = trackable
+		local cleaner = GetSecondaryInstanceCleanupFunction(instanceTrackable)
 		if cleaner then
-			cleaner(trackable)
-			task.delay(0, pcall, trackable.Destroy, trackable) -- Guarantee (according to https://devforum.roblox.com/t/deferred-engine-events/2276564) time for events to fire before destroying.
+			cleaner(instanceTrackable)
+			task.delay(0, pcall, instanceTrackable.Destroy, instanceTrackable) -- Guarantee (according to https://devforum.roblox.com/t/deferred-engine-events/2276564) time for events to fire before destroying.
 		else
-			pcall(trackable.Destroy, trackable)
+			pcall(instanceTrackable.Destroy, instanceTrackable)
 		end
 	end
 end
