@@ -63,38 +63,5 @@
 			"return table.freeze(${1:$TM_FILENAME_BASE})",
 			""
 		]
-	},
-	"Jecs System": {
-		"scope": "lua,luau",
-		"prefix": [
-			"system"
-		],
-		"description": "Generates a template system of Jecs.",
-		"body": [
-			"--!strict",
-			"--- Services ---",
-			"local ReplicatedStorage = game:GetService(\"ReplicatedStorage\")",
-			"",
-			"--- Imports ---",
-			"local Jecs = require(ReplicatedStorage.Packages.Jecs)",
-			"",
-			"local SystemScheduler = require(script.Parent)",
-			"",
-			"local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)",
-			"",
-			"--- Types ---",
-			"",
-			"--- Variables ---",
-			"local World = JecsCommon.World",
-			"",
-			"--- Functions ---",
-			"",
-			"--- ${1:$TM_FILENAME_BASE} System ---",
-			"return (SystemScheduler.Schedule(function(dt: number)",
-			"\t${2}",
-			"end))",
-			"",
-			""
-		]
 	}
 }

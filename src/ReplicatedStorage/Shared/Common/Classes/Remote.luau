@@ -188,8 +188,8 @@ function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...)
 					end
 					self._meta.TotalFires += 1
 					cooldownData.RequestsThisPeriod += 1
-					cooldownData.LastFireTime = os.time()
-					handler(...)
+					cooldownData.LastFireTime = os.time();
+					(handler :: any)(player, ...)
 				end
 			end)
 		else
@@ -208,7 +208,7 @@ function Remote.Connect<Params..., Return...>(self: Remote, handler: (Params...)
 					self._meta.TotalFires += 1
 					cooldownData.RequestsThisPeriod += 1
 					cooldownData.LastFireTime = os.time()
-					return handler(...)
+					return (handler :: any)(player, ...)
 				end
 			end
 		end

@@ -53,7 +53,7 @@ function InitializeCharacter(character: UsableCharacter, player: Player)
 		local airController = controller.AirController
 		local groundController = controller.GroundController
 		local groundSensor = controller.GroundSensor
-		groundSensor.SearchDistance = (rootPart.Size.Y / 2) + character.Humanoid.HipHeight + 1
+		groundSensor.SearchDistance = (rootPart.Size.Y / 2) + character.Humanoid.HipHeight + 2
 		groundController.GroundOffset = character.Humanoid.HipHeight
 		controller.RootPart = rootPart
 		airController.Parent = controller
@@ -181,7 +181,6 @@ do
 			if jecsData then
 				World:remove(jecsData.Character, CharacterComponent)
 				World:remove(jecsData.Character, AliveTag)
-				World:remove(jecsData.Gravity, GravityComponent)
 			end
 		end)
 	end)

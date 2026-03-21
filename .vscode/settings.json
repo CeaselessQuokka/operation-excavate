@@ -9,8 +9,8 @@
 	"editor.formatOnSave": true,
 	"files.insertFinalNewline": true,
 	"workbench.colorCustomizations": {
-		"editor.wordHighlightBackground": "#ffff00", // yellow with transparency
-		"editor.wordHighlightStrongBackground": "#ffff00" // also yellow for writes/references
+		"editor.wordHighlightBackground": "#ffff00fe", // yellow with transparency
+		"editor.wordHighlightStrongBackground": "#ffff00fe" // also yellow for writes/references
 	},
 	"cSpell.words": [
 		"AABB",

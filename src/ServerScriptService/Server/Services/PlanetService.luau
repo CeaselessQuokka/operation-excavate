@@ -3,11 +3,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local ServerScriptService = game:GetService("ServerScriptService")
 
 --- Imports ---
-local Knit = require(ReplicatedStorage.Packages.Knit)
-
 local PlayerService = require(script.Parent.PlayerService)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
@@ -15,17 +12,14 @@ local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGe
 local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
 
 --- PlanetService Service ---
-local PlanetService = {
-	Name = "PlanetService",
-}
-Knit.CreateService(PlanetService)
+local PlanetService = {}
 
-function PlanetService:KnitStart()
+do -- Service initialization.
 	local fpsTable: { number } = table.create(60, task.wait())
 	local idx = 1
-	local nFrames = 1
+	local t = 0
 	RunService.Heartbeat:Connect(function(dt)
-		nFrames += dt
+		t += dt
 		fpsTable[idx] = dt
 		idx = idx % 60 + 1
 		local tFps = 0
@@ -34,11 +28,13 @@ function PlanetService:KnitStart()
 				tFps += v
 			end
 		end
-		if nFrames >= 0.375 then
-			TableEditor.ServerView(Players:GetPlayers(), "Info", {
-				FPS = math.floor(1 / (tFps / 60)),
-			})
-			nFrames = 0
+		if t >= 0.375 then
+			if not RunService:IsStudio() then
+				TableEditor.ServerView(Players:GetPlayers(), "Info", {
+					FPS = math.floor(1 / (tFps / 60)),
+				})
+			end
+			t = 0
 		end
 	end)
 
@@ -53,7 +49,7 @@ function PlanetService:KnitStart()
 	end
 	local function GenerateChunksAroundGridPosition(gridPosition: Vector3)
 		local sorted = table.clone(sortedOffsets)
-		table.sort(sorted, function(a, b)
+		table.sort(sorted, function(a: Vector3, b: Vector3)
 			local aySame = a.Y == 0
 			local bySame = b.Y == 0
 			if aySame ~= bySame then
@@ -104,25 +100,27 @@ function PlanetService:KnitStart()
 	Players.PlayerRemoving:Connect(function(player)
 		lastPositions[player] = nil
 	end)
-	while true do
-		-- TODO: why does this run multiple times even after updating currentPosition?
-		task.wait(1 / 30)
-		for player: Player, character: CharacterHelper.UsableR15Character in characters do
-			local lastPosition = lastPositions[player]
-			local currentPosition = character:GetPivot().Position
-			if lastPosition and (currentPosition - lastPosition).Magnitude < 24 then
-				continue
-			end
+	task.spawn(function()
+		while true do
+			-- TODO: why does this run multiple times even after updating currentPosition?
+			task.wait(1 / 30)
+			for player: Player, character: CharacterHelper.UsableR15Character in characters do
+				local lastPosition = lastPositions[player]
+				local currentPosition = character:GetPivot().Position
+				if lastPosition and (currentPosition - lastPosition).Magnitude < 24 then
+					continue
+				end
 
-			-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
-			lastPositions[player] = currentPosition
-			task.spawn(function()
-				local currentChunkIndex = planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position)
-				local chunkGridPosition = planet:ChunkIndexToGridPosition(currentChunkIndex)
-				GenerateChunksAroundGridPosition(chunkGridPosition)
-			end)
+				-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
+				lastPositions[player] = currentPosition
+				task.spawn(function()
+					local currentChunkIndex = planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position)
+					local chunkGridPosition = planet:ChunkIndexToGridPosition(currentChunkIndex)
+					GenerateChunksAroundGridPosition(chunkGridPosition)
+				end)
+			end
 		end
-	end
+	end)
 end
 
 return PlanetService

@@ -1,74 +1,53 @@
 --!strict
 --- Services ---
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local ServerScriptService = game:GetService("ServerScriptService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 --- Imports ---
-local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
-local Knit = require(ReplicatedStorage.Packages.Knit)
-
+local CameraController = require(script.Parent.CameraController)
 local PlayerController = require(script.Parent.PlayerController)
 
-local PlayerModule = (require)(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
+local Cleaner = require(ReplicatedStorage.Shared.Helpers.Cleaner)
+
+local PlayerModule = (require)(PlayerController.Player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
 
 --- Types ---
+type UsableCharacter = CharacterHelper.UsableCharacter
 type CustomController = ControllerManager & {
 	AirController: AirController,
 	GroundController: GroundController,
 	GroundSensor: ControllerPartSensor,
 }
 
---- Variables ---
+--- Movement Controller ---
+local MovementController = {}
 
---- Functions ---
-
---- MovementController Controller ---
-local MovementController = {
-	Name = "MovementController",
-}
-Knit.CreateController(MovementController)
-
-function MovementController:KnitInit()
-	local self = MovementController
-end
-
-function MovementController:KnitStart()
-	local self = MovementController
-	PlayerController.OnCharacterAdded:Connect(function(character)
-		-- TODO: need a better way to do this, it's quite ugly
+do -- Initialize controller.
+	local cleaner = Cleaner.new()
+	local function Cleanup()
+		cleaner:Clean()
+	end
+	PlayerController.CharacterAdded(function(character)
 		-- UNRELATED TODO: need to change lighting based off point on planet to have a smooth transition from day to night or vice versa
-		local manager = PlayerController:WaitForInstance<<ControllerManager>>(">ControllerManager", character)
-		if not manager then
-			return
-		end
-
-		local groundController = PlayerController:WaitForInstance<<GroundController>>("GroundController", character)
-		if not groundController then
-			return
-		end
-
-		local airController = PlayerController:WaitForInstance<<AirController>>("AirController", character)
-		if not airController then
-			return
-		end
-
-		local groundSensor =
-			PlayerController:WaitForInstance<<ControllerPartSensor>>("ControllerPartSensor#GroundSensor", character)
-		if not groundSensor then
-			return
-		end
-
-		local jumpAnim = PlayerController:WaitForInstance<<Animation>>("Animation#JumpAnim", character)
-		if not jumpAnim then
-			return
-		end
-
-		local movementAttachment =
-			PlayerController:WaitForInstance<<Attachment>>("Attachment#MovementAttachment", character)
+		local manager: ControllerManager = PlayerController.WaitForQuery(">ControllerManager")
+		local groundController: GroundController = if manager
+			then PlayerController.WaitForQuery("GroundController")
+			else nil :: any
+		local airController: AirController = if groundController
+			then PlayerController.WaitForQuery("AirController")
+			else nil :: any
+		local groundSensor: ControllerPartSensor = if airController
+			then PlayerController.WaitForQuery("ControllerPartSensor#GroundSensor")
+			else nil :: any
+		local jumpAnim: Animation = if groundSensor
+			then PlayerController.WaitForQuery("Animation#JumpAnim")
+			else nil :: any
+		local movementAttachment: Attachment = if jumpAnim
+			then PlayerController.WaitForQuery("Attachment#MovementAttachment")
+			else nil :: any
 		if not movementAttachment then
 			return
 		end
@@ -77,7 +56,7 @@ function MovementController:KnitStart()
 		-- TODO: need to properly cleanup
 		-- TODO: make more efficient
 		-- TODO: need to fix this in TableEditor: `local view = TableEditor.View("Tracks", TableHelper.ArrayToSet(character.Humanoid.Animator:GetPlayingAnimationTracks()))`; it doesn't remove old keys
-		local movementVelocity = Instance.new("LinearVelocity")
+		local movementVelocity = cleaner:Add(Instance.new("LinearVelocity"))
 		movementVelocity.Attachment0 = movementAttachment
 		movementVelocity.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
 		movementVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
@@ -85,43 +64,42 @@ function MovementController:KnitStart()
 		movementVelocity.Parent = movementAttachment.Parent
 		local searchDistance = groundSensor.SearchDistance
 		local params = RaycastParams.new()
-		local jumpTrack = (CharacterHelper.GetAnimator(character, true) :: Animator):LoadAnimation(jumpAnim)
+		local jumpTrack =
+			cleaner:Add((CharacterHelper.GetAnimator(character, true) :: Animator):LoadAnimation(jumpAnim))
 		jumpTrack.Priority = Enum.AnimationPriority.Action
 		jumpTrack.Looped = false
 		params:AddToFilter(character)
-		RunService.Heartbeat:Connect(function()
+		local lastController = manager.ActiveController
+		cleaner:Add(RunService.Heartbeat:Connect(function()
+			if PlayerController.Character ~= character then
+				return
+			end
+
+			local cameraForward = CameraController.CameraForward
 			local origin = character.HumanoidRootPart.CFrame
 			manager.UpDirection = origin.Position.Unit
 
 			-- Compute movement direction from raw input + camera tangent-plane vectors
 			-- instead of Humanoid.MoveDirection, which Roblox projects onto world XZ (flat world).
 			local moveDir = Vector3.zero
-			if cameraForward then
-				local up = manager.UpDirection
-				local forward = cameraForward
-				local right = forward:Cross(up).Unit
-				local rawInput = PlayerModule:GetControls():GetMoveVector() -- X=right, Z=forward
-				if rawInput.Magnitude > 0.001 then
-					moveDir = (forward * -rawInput.Z + right * rawInput.X)
-					if moveDir.Magnitude > 0.001 then
-						moveDir = moveDir.Unit
-						movementAttachment.WorldAxis = moveDir
-						movementVelocity.LineVelocity = manager.BaseMoveSpeed
-						manager.FacingDirection = moveDir
-					else
-						movementVelocity.LineVelocity = 0
-					end
+			local up = manager.UpDirection
+			local forward = cameraForward
+			local right = forward:Cross(up).Unit
+			local rawInput = PlayerModule:GetControls():GetMoveVector() -- X=right, Z=forward
+			if rawInput.Magnitude > 0.001 then
+				moveDir = (forward * -rawInput.Z + right * rawInput.X)
+				if moveDir.Magnitude > 0.001 then
+					moveDir = moveDir.Unit
+					movementAttachment.WorldAxis = moveDir
+					movementVelocity.LineVelocity = manager.BaseMoveSpeed
+					manager.FacingDirection = moveDir
 				else
 					movementVelocity.LineVelocity = 0
 				end
+			else
+				movementVelocity.LineVelocity = 0
 			end
 
-			if
-				manager.ActiveController == airController
-				and character.HumanoidRootPart.AssemblyLinearVelocity.Y < 0
-			then
-				jumpTrack:Stop()
-			end
 			local result = Workspace:Raycast(origin.Position, origin.UpVector * -searchDistance, params)
 			if result then
 				groundSensor.HitFrame = CFrame.new(result.Position)
@@ -133,10 +111,21 @@ function MovementController:KnitStart()
 				character.Humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 				manager.ActiveController = airController
 			end
-		end)
+			if
+				(manager.ActiveController == airController and character.HumanoidRootPart.AssemblyLinearVelocity.Y < 0)
+				or (lastController == airController and manager.ActiveController == groundController)
+			then
+				jumpTrack:Stop()
+			end
+			lastController = manager.ActiveController
+		end))
 		-- TODO: use inputcontext and support all modalities
-		UserInputService.InputBegan:Connect(function(input, gameProcessed)
-			if gameProcessed or manager.ActiveController ~= groundController then
+		cleaner:Add(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if
+				gameProcessed
+				or PlayerController.Character ~= character
+				or manager.ActiveController ~= groundController
+			then
 				return
 			end
 
@@ -147,9 +136,11 @@ function MovementController:KnitStart()
 				)
 				jumpTrack:Play()
 			end
-		end)
+		end))
 		character.Humanoid.EvaluateStateMachine = false
 	end)
+	PlayerController.OnDied:Connect(Cleanup)
+	PlayerController.Player.CharacterRemoving:Connect(Cleanup)
 end
 
 return MovementController
