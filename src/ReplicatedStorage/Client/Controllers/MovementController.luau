@@ -52,10 +52,9 @@ do -- Initialize controller.
 			return
 		end
 
-		-- TODO: need to check if on water or a non-cancollide part, so they can't walk on top of it (could be cool to have walk on water boots or something)
-		-- TODO: need to properly cleanup
-		-- TODO: make more efficient
-		-- TODO: need to fix this in TableEditor: `local view = TableEditor.View("Tracks", TableHelper.ArrayToSet(character.Humanoid.Animator:GetPlayingAnimationTracks()))`; it doesn't remove old keys
+		-- TODO: need to check if on non-cancollide part, so they can't walk on top of it (could be cool to have walk on water boots or something)
+		-- TODO: make more efficient (only run if moving and stuff if possible)
+		-- TODO: try to stop their character from rotating when inptu stops, like normal character controls
 		local movementVelocity = cleaner:Add(Instance.new("LinearVelocity"))
 		movementVelocity.Attachment0 = movementAttachment
 		movementVelocity.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
@@ -69,6 +68,7 @@ do -- Initialize controller.
 		jumpTrack.Priority = Enum.AnimationPriority.Action
 		jumpTrack.Looped = false
 		params:AddToFilter(character)
+		params.IgnoreWater = true
 		local lastController = manager.ActiveController
 		cleaner:Add(RunService.Heartbeat:Connect(function()
 			if PlayerController.Character ~= character then
@@ -86,9 +86,9 @@ do -- Initialize controller.
 			local forward = cameraForward
 			local right = forward:Cross(up).Unit
 			local rawInput = PlayerModule:GetControls():GetMoveVector() -- X=right, Z=forward
-			if rawInput.Magnitude > 0.001 then
-				moveDir = (forward * -rawInput.Z + right * rawInput.X)
-				if moveDir.Magnitude > 0.001 then
+			if rawInput.Magnitude > 0.01 then
+				moveDir = (forward * -rawInput.Z) + (right * rawInput.X)
+				if moveDir.Magnitude > 0.01 then
 					moveDir = moveDir.Unit
 					movementAttachment.WorldAxis = moveDir
 					movementVelocity.LineVelocity = manager.BaseMoveSpeed
@@ -131,8 +131,7 @@ do -- Initialize controller.
 
 			if input.KeyCode == Enum.KeyCode.Space then
 				character.HumanoidRootPart:ApplyImpulse(
-					character.HumanoidRootPart.CFrame.UpVector
-						* (character.Humanoid.JumpPower * character.HumanoidRootPart.AssemblyMass)
+					manager.UpDirection * (character.Humanoid.JumpPower * character.HumanoidRootPart.AssemblyMass)
 				)
 				jumpTrack:Play()
 			end
