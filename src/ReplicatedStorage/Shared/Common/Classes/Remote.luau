@@ -17,6 +17,19 @@ export type Config = {
 	MaxRequestsPerPeriod: number?,
 }
 
+export type ServerApi<Params..., Return...> = {
+	Fire: (self: Remote<Params..., Return...>, player: Player, Params...) -> Return...,
+	FireAll: (self: Remote<Params..., Return...>, Params...) -> (),
+	Connect: (
+		self: Remote<Params..., Return...>,
+		handler: (player: Player, Params...) -> Return...
+	) -> RBXScriptConnection?,
+}
+export type ClientApi<Params..., Return...> = {
+	Fire: (self: Remote<Params..., Return...>, Params...) -> Return...,
+	Connect: (self: Remote<Params..., Return...>, handler: (Params...) -> Return...) -> RBXScriptConnection?,
+}
+
 --- Variables ---
 local IS_SERVER = RunService:IsServer()
 
@@ -55,7 +68,7 @@ Remote.__index = Remote
 
 export type Remote<Params..., Return...> = setmetatable<
 	{
-		Instance: RemoteInstance & { _: (Params...) -> Return... }, -- The underlying RemoteEvent or RemoteFunction instance. The type is just a hack to get proper typing.
+		Instance: RemoteInstance, -- The underlying RemoteEvent or RemoteFunction instance. The type is just a hack to get proper typing.
 		Config: Config?, -- Only respected by server.
 		_cooldowns: {
 			[Player]: {
@@ -83,7 +96,7 @@ export type Remote<Params..., Return...> = setmetatable<
 function Remote.Event<Params..., Return...>(name: string, config: Config?): Remote<Params..., Return...>
 	assert(config == nil or IS_SERVER, "Config can only be set for the server")
 	if remotes[name] then
-		return remotes[name] :: any
+		return remotes[name]
 	end
 
 	local remoteInstance: RemoteInstance
@@ -98,21 +111,21 @@ function Remote.Event<Params..., Return...>(name: string, config: Config?): Remo
 	end
 
 	local self: Remote<Params..., Return...> = setmetatable({
-		Instance = remoteInstance :: any,
+		Instance = remoteInstance,
 		Config = config,
 		_cooldowns = {},
 		_meta = {
 			TotalFires = 0,
 		},
-	}, Remote)
-	remotes[name] = self :: any
+	}, Remote) :: any
+	remotes[name] = self
 	return self
 end
 
 function Remote.Function<Params..., Return...>(name: string, config: Config?): Remote<Params..., Return...>
 	assert(config == nil or IS_SERVER, "Config can only be set for the server")
 	if remotes[name] then
-		return remotes[name] :: any
+		return remotes[name]
 	end
 
 	local remoteInstance: RemoteInstance
@@ -127,19 +140,17 @@ function Remote.Function<Params..., Return...>(name: string, config: Config?): R
 	end
 
 	local self: Remote<Params..., Return...> = setmetatable({
-		Instance = remoteInstance :: any,
+		Instance = remoteInstance,
 		Config = config,
 		_cooldowns = {},
 		_meta = {
 			TotalFires = 0,
 		},
-	}, Remote)
-	remotes[name] = self :: any
+	}, Remote) :: any
+	remotes[name] = self
 	return self
 end
 
--- This covers both RemoteEvents and RemoteFunctions, even though RemoteFunctions
--- are technically invoked.
 function Remote.Fire<Params..., Return...>(self: Remote<Params..., Return...>, ...: Params...): Return...
 	local isEvent = self.Instance.ClassName == "RemoteEvent"
 	if IS_SERVER then
@@ -162,9 +173,8 @@ function Remote.FireAll<Params..., Return...>(self: Remote<Params..., Return...>
 	assert(IS_SERVER, "FireAll can only be called from the server")
 	assert(self.Instance.ClassName == "RemoteEvent", "FireAll can only be called on RemoteEvents")
 
-	for _, player in Players:GetPlayers() do
-		(self.Instance :: RemoteEvent):FireClient(player, ...)
-	end
+	local remoteInstance = self.Instance :: RemoteEvent
+	remoteInstance:FireAllClients(...)
 end
 
 function Remote.Connect<Params..., Return...>(self: Remote<Params..., Return...>, handler: (Params...) -> Return...): RBXScriptConnection?
@@ -257,10 +267,5 @@ do -- Handle cooldown (un)populating.
 		end
 	end)
 end
-
-local syncPlayerData = Remote.Event<<(string, number)>>("SyncPlayerData")
-syncPlayerData:Connect(function(a, b) end)
-syncPlayerData:Fire("a", 2)
-syncPlayerData:FireAll("b", 100)
 
 return table.freeze(Remote)
