@@ -11,6 +11,7 @@ type Container = Frame | ScrollingFrame
 
 --- Settings Menu Helper ---
 local SettingsMenuHelper = {}
+local nextProxyId = 0
 
 -- Create a toggle (checkbox-style) control
 function SettingsMenuHelper.CreateToggle(
@@ -68,6 +69,16 @@ function SettingsMenuHelper.CreateToggle(
 		callback(isChecked)
 	end)
 
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	checkbox:SetAttribute("_ProxyId", nextProxyId)
+	checkbox:SetAttribute("_Proxy", 0)
+	checkbox:GetAttributeChangedSignal("_Proxy"):Connect(function()
+		isChecked = not isChecked
+		checkbox.Text = isChecked and "✓" or ""
+		callback(isChecked)
+	end)
+
 	return toggleFrame
 end
 
@@ -95,6 +106,12 @@ function SettingsMenuHelper.CreateButton(
 	corner.Parent = button
 
 	button.Activated:Connect(callback)
+
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	button:SetAttribute("_ProxyId", nextProxyId)
+	button:SetAttribute("_Proxy", 0)
+	button:GetAttributeChangedSignal("_Proxy"):Connect(callback)
 
 	return button
 end
@@ -149,7 +166,7 @@ function SettingsMenuHelper.CreateNumberInput(
 	corner.CornerRadius = UDim.new(0, 4)
 	corner.Parent = textBox
 
-	textBox.FocusLost:Connect(function()
+	local function HandleNumberInput()
 		local num = tonumber(textBox.Text)
 		if num then
 			if min and num < min then
@@ -163,7 +180,15 @@ function SettingsMenuHelper.CreateNumberInput(
 		else
 			textBox.Text = tostring(defaultValue)
 		end
-	end)
+	end
+
+	textBox.FocusLost:Connect(HandleNumberInput)
+
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	textBox:SetAttribute("_ProxyId", nextProxyId)
+	textBox:SetAttribute("_Proxy", 0)
+	textBox:GetAttributeChangedSignal("_Proxy"):Connect(HandleNumberInput)
 
 	return inputFrame
 end
@@ -233,11 +258,19 @@ function SettingsMenuHelper.CreateCollapsibleSection(
 	contentPadding.PaddingLeft = UDim.new(0, 12)
 	contentPadding.Parent = contentFrame
 
-	headerButton.Activated:Connect(function()
+	local function ToggleSection()
 		isExpanded = not isExpanded
 		headerButton.Text = (isExpanded and "▼ " or "▶ ") .. label
 		contentFrame.Visible = isExpanded
-	end)
+	end
+
+	headerButton.Activated:Connect(ToggleSection)
+
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	headerButton:SetAttribute("_ProxyId", nextProxyId)
+	headerButton:SetAttribute("_Proxy", 0)
+	headerButton:GetAttributeChangedSignal("_Proxy"):Connect(ToggleSection)
 
 	return contentFrame
 end
@@ -328,11 +361,20 @@ function SettingsMenuHelper.CreateCycleButton(
 	corner.Parent = cycleButton
 
 	local currentIndex = defaultIndex
-	cycleButton.Activated:Connect(function()
+
+	local function CycleNext()
 		currentIndex = currentIndex % #options + 1
 		cycleButton.Text = options[currentIndex]
 		callback(currentIndex, options[currentIndex])
-	end)
+	end
+
+	cycleButton.Activated:Connect(CycleNext)
+
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	cycleButton:SetAttribute("_ProxyId", nextProxyId)
+	cycleButton:SetAttribute("_Proxy", 0)
+	cycleButton:GetAttributeChangedSignal("_Proxy"):Connect(CycleNext)
 
 	return cycleFrame
 end
@@ -456,6 +498,27 @@ function SettingsMenuHelper.CreateColorPicker(
 				end
 			end,
 		})
+	end)
+
+	-- Proxy support for TrueServerView
+	nextProxyId += 1
+	swatchButton:SetAttribute("_ProxyId", nextProxyId)
+	swatchButton:SetAttribute("_ProxyColor", "")
+	swatchButton:GetAttributeChangedSignal("_ProxyColor"):Connect(function()
+		local colorStr = swatchButton:GetAttribute("_ProxyColor")
+		if typeof(colorStr) == "string" and colorStr ~= "" then
+			local parts = colorStr:split(",")
+			if #parts == 3 then
+				local r = tonumber(parts[1])
+				local g = tonumber(parts[2])
+				local b = tonumber(parts[3])
+				if r and g and b then
+					local color = Color3.fromRGB(r, g, b)
+					swatchButton.BackgroundColor3 = color
+					callback(color)
+				end
+			end
+		end
 	end)
 
 	return colorFrame

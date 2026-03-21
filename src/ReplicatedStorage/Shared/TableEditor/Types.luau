@@ -714,6 +714,12 @@ export type TableEditorImpl = {
 		data: Table?,
 		options: ViewerOptions?
 	) -> { [string]: boolean },
+	TrueServerView: (
+		players: ServerViewTarget,
+		name: string,
+		data: Table?,
+		options: ViewerOptions?
+	) -> { [string]: boolean },
 }
 
 -- Module return (empty table, types are exported)

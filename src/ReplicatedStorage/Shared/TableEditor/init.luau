@@ -34,6 +34,7 @@ local Signal = require(script.Packages.Signal)
 local Trove = require(script.Packages.Trove)
 local Types = require(script.Types)
 
+local ColorPickerHelper = require(script.Helpers.ColorPickerHelper)
 local ImageHelper = require(script.Helpers.ImageHelper)
 local SearchHelper = require(script.Helpers.SearchHelper)
 local SettingsMenuHelper = require(script.Helpers.SettingsMenuHelper)
@@ -120,6 +121,7 @@ local idToViewer: { [string]: any } = {}
 local nextLinkGroupId = 1
 local filterDebounceThreads: { [string]: thread } = {}
 local quickViews: { [string]: any } = {} -- Quick view instances keyed by alias
+local trueServerViews: { [string]: { [number]: any } } = {} -- TrueServerView instances keyed by alias -> player UserId -> viewer
 
 -- Server/Client detection and RemoteEvent infrastructure
 local IS_SERVER = RunService:IsServer()
@@ -127,6 +129,912 @@ local IS_CLIENT = RunService:IsClient()
 local REMOTE_EVENT_NAME = "TableEditor_ServerView"
 local serverViewRemote: RemoteEvent? = nil
 local pendingVerifications: { [string]: { OriginalData: any, Name: string, PlayerName: string } } = {}
+
+-- TrueServerView RemoteEvent infrastructure
+local TRUE_SERVER_VIEW_ACTION_REMOTE_NAME = "TableEditor_TrueServerViewAction"
+local trueServerViewActionRemote: RemoteEvent? = nil
+local trueServerViewHandlerConnected = false
+
+local function GetOrCreateTrueServerViewActionRemote(): RemoteEvent?
+	if trueServerViewActionRemote then
+		return trueServerViewActionRemote
+	end
+	if IS_SERVER then
+		local existing = ReplicatedStorage:FindFirstChild(TRUE_SERVER_VIEW_ACTION_REMOTE_NAME)
+		if existing and existing:IsA("RemoteEvent") then
+			trueServerViewActionRemote = existing
+		else
+			local remote = Instance.new("RemoteEvent")
+			remote.Name = TRUE_SERVER_VIEW_ACTION_REMOTE_NAME
+			remote.Parent = ReplicatedStorage
+			trueServerViewActionRemote = remote
+		end
+	end
+	return trueServerViewActionRemote
+end
+
+-- Client-side proxy for TrueServerView ScreenGuis.
+-- Connects all interactive GUI elements to fire actions through the RemoteEvent.
+local function SetupTrueServerViewClientProxy(screenGui: ScreenGui)
+	local remote = ReplicatedStorage:WaitForChild(TRUE_SERVER_VIEW_ACTION_REMOTE_NAME, 10) :: RemoteEvent?
+	if not remote then
+		return
+	end
+
+	local alias = screenGui.Name
+
+	local mainFrame: Frame? = nil
+	for _, child in screenGui:GetChildren() do
+		if child:IsA("Frame") then
+			mainFrame = child :: Frame
+			break
+		end
+	end
+	if not mainFrame then
+		return
+	end
+
+	local function GetEntryPath(instance: Instance): string?
+		local current: Instance? = instance.Parent
+		while current and current ~= screenGui do
+			local attr = (current :: Instance):GetAttribute("EntryPath")
+			if attr then
+				return attr :: string
+			end
+			current = (current :: Instance).Parent
+		end
+		return nil
+	end
+
+	local function GetGhostRowInfo(instance: Instance): (boolean, string?)
+		local current: Instance? = instance.Parent
+		while current and current ~= screenGui do
+			if (current :: Instance).Name == "GhostRow" or (current :: Instance).Name == "RootGhostRow" then
+				local parent: Instance? = (current :: Instance).Parent
+				while parent and parent ~= screenGui do
+					local attr = (parent :: Instance):GetAttribute("EntryPath")
+					if attr then
+						return true, attr :: string
+					end
+					parent = (parent :: Instance).Parent
+				end
+				return true, nil
+			end
+			current = (current :: Instance).Parent
+		end
+		return false, nil
+	end
+
+	local function ConnectButton(button: GuiButton)
+		button.Activated:Connect(function()
+			local proxyId = button:GetAttribute("_ProxyId")
+			if proxyId then
+				remote:FireServer(alias, "proxy", { proxyId = proxyId })
+				return
+			end
+
+			local name = button.Name
+
+			if name == "CloseButton" then
+				remote:FireServer(alias, "close", {})
+			elseif name == "MinimizeButton" then
+				remote:FireServer(alias, "minimize", {})
+			elseif name == "CollapseButton" then
+				remote:FireServer(alias, "collapse", {})
+			elseif name == "FreezeButton" then
+				remote:FireServer(alias, "freeze", {})
+			elseif name == "HamburgerButton" then
+				-- Handle menu visibility locally on the client
+				local optionsMenu = (mainFrame :: Frame):FindFirstChild("OptionsMenu")
+				if optionsMenu then
+					(optionsMenu :: Frame).Visible = not (optionsMenu :: Frame).Visible
+				end
+			elseif name == "FilterModeButton" then
+				remote:FireServer(alias, "filterMode", {})
+			elseif name == "ExpansionButton" then
+				local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+					or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+				local entryPath = GetEntryPath(button)
+				if entryPath then
+					remote:FireServer(alias, "toggleExpand", { entryPath = entryPath, shift = shiftHeld })
+				end
+			elseif name == "FocusButton" then
+				local entryPath = GetEntryPath(button)
+				if entryPath then
+					remote:FireServer(alias, "focus", { entryPath = entryPath })
+				end
+			elseif name == "FreezeValueButton" then
+				local entryPath = GetEntryPath(button)
+				if entryPath then
+					remote:FireServer(alias, "freezeValue", { entryPath = entryPath })
+				end
+			elseif name == "DeleteRowButton" then
+				local entryPath = GetEntryPath(button)
+				if entryPath then
+					remote:FireServer(alias, "deleteEntry", { entryPath = entryPath })
+				end
+			elseif name == "AddButton" then
+				local isGhost, parentEntryPath = GetGhostRowInfo(button)
+				if isGhost then
+					local ghostRow = button.Parent
+					if ghostRow then
+						local keyInput = ghostRow:FindFirstChild("KeyInput")
+						local valueInput = ghostRow:FindFirstChild("ValueInput")
+						remote:FireServer(alias, "addRow", {
+							parentEntryPath = parentEntryPath,
+							keyText = if keyInput then (keyInput :: TextBox).Text else "",
+							valueText = if valueInput then (valueInput :: TextBox).Text else "",
+						})
+					end
+				end
+			end
+		end)
+	end
+
+	local function ConnectTextBox(textBox: TextBox)
+		textBox.FocusLost:Connect(function(enterPressed: boolean)
+			local proxyId = textBox:GetAttribute("_ProxyId")
+			if proxyId then
+				remote:FireServer(alias, "proxyText", { proxyId = proxyId, text = textBox.Text })
+				return
+			end
+
+			local name = textBox.Name
+
+			if name == "FieldFilter" then
+				remote:FireServer(alias, "filterText", { text = textBox.Text })
+			elseif name == "Exclusions" then
+				remote:FireServer(alias, "exclusionText", { text = textBox.Text })
+			elseif name == "FieldKey" then
+				local entryPath = GetEntryPath(textBox)
+				if entryPath then
+					remote:FireServer(
+						alias,
+						"editKey",
+						{ entryPath = entryPath, text = textBox.Text, enterPressed = enterPressed }
+					)
+				end
+			elseif name == "FieldValue" then
+				local entryPath = GetEntryPath(textBox)
+				if entryPath then
+					remote:FireServer(
+						alias,
+						"editValue",
+						{ entryPath = entryPath, text = textBox.Text, enterPressed = enterPressed }
+					)
+				end
+			elseif name == "KeyInput" or name == "ValueInput" then
+				if enterPressed then
+					local isGhost, parentEntryPath = GetGhostRowInfo(textBox)
+					if isGhost then
+						local ghostRow = textBox.Parent
+						if ghostRow then
+							local keyInput = ghostRow:FindFirstChild("KeyInput")
+							local valueInput = ghostRow:FindFirstChild("ValueInput")
+							remote:FireServer(alias, "addRow", {
+								parentEntryPath = parentEntryPath,
+								keyText = if keyInput then (keyInput :: TextBox).Text else "",
+								valueText = if valueInput then (valueInput :: TextBox).Text else "",
+							})
+						end
+					end
+				end
+			end
+		end)
+
+		-- Support FilterOnType: live debounced text updates for filter/exclusion boxes
+		if textBox.Name == "FieldFilter" or textBox.Name == "Exclusions" then
+			local debounceThread: thread? = nil
+			local lastSentText: string? = nil
+			textBox:GetPropertyChangedSignal("Text"):Connect(function()
+				local currentText = textBox.Text
+				if currentText == lastSentText then
+					return -- Skip: this was replicated back from the server
+				end
+				if debounceThread then
+					task.cancel(debounceThread)
+				end
+				debounceThread = task.delay(0.15, function()
+					debounceThread = nil
+					lastSentText = textBox.Text
+					if textBox.Name == "FieldFilter" then
+						remote:FireServer(alias, "filterText", { text = textBox.Text })
+					else
+						remote:FireServer(alias, "exclusionText", { text = textBox.Text })
+					end
+				end)
+			end)
+		end
+	end
+
+	local function ConnectInfoBoxHover(infoBox: Frame)
+		local contentRow = infoBox:FindFirstChild("ContentRow")
+		local freezeValueBtn = contentRow and contentRow:FindFirstChild("FreezeValueButton")
+		if freezeValueBtn then
+			infoBox.MouseEnter:Connect(function()
+				(freezeValueBtn :: ImageButton).Visible = true
+			end)
+			infoBox.MouseLeave:Connect(function()
+				(freezeValueBtn :: ImageButton).Visible = false
+			end)
+		end
+	end
+
+	-- Tooltip support (entirely client-side)
+	local tooltip = Instance.new("Frame")
+	tooltip.Name = "Tooltip"
+	tooltip.Size = UDim2.fromOffset(200, 24)
+	tooltip.AutomaticSize = Enum.AutomaticSize.XY
+	tooltip.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+	tooltip.BorderSizePixel = 0
+	tooltip.Visible = false
+	tooltip.ZIndex = 100
+	tooltip.Parent = mainFrame
+
+	do
+		local tooltipCorner = Instance.new("UICorner")
+		tooltipCorner.CornerRadius = UDim.new(0, 4)
+		tooltipCorner.Parent = tooltip
+
+		local tooltipStroke = Instance.new("UIStroke")
+		tooltipStroke.Color = Color3.fromRGB(80, 80, 85)
+		tooltipStroke.Thickness = 1
+		tooltipStroke.Parent = tooltip
+
+		local tooltipLabel = Instance.new("TextLabel")
+		tooltipLabel.Name = "Label"
+		tooltipLabel.Size = UDim2.new()
+		tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
+		tooltipLabel.BackgroundTransparency = 1
+		tooltipLabel.TextColor3 = Color3.fromRGB(150, 150, 155)
+		tooltipLabel.TextSize = 12
+		tooltipLabel.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+		tooltipLabel.TextXAlignment = Enum.TextXAlignment.Left
+		tooltipLabel.TextWrapped = true
+		tooltipLabel.Parent = tooltip
+
+		local tooltipPadding = Instance.new("UIPadding")
+		tooltipPadding.PaddingLeft = UDim.new(0, 6)
+		tooltipPadding.PaddingRight = UDim.new(0, 6)
+		tooltipPadding.PaddingTop = UDim.new(0, 4)
+		tooltipPadding.PaddingBottom = UDim.new(0, 4)
+		tooltipPadding.Parent = tooltip
+
+		local tooltipSizeConstraint = Instance.new("UISizeConstraint")
+		tooltipSizeConstraint.MaxSize = Vector2.new(400, 200)
+		tooltipSizeConstraint.Parent = tooltip
+	end
+
+	local function ConnectTooltip(textBox: TextBox)
+		local delayThread: thread? = nil
+
+		textBox.MouseEnter:Connect(function()
+			if textBox.TextFits then
+				return
+			end
+			delayThread = task.delay(0.5, function()
+				local tooltipLabel = tooltip:FindFirstChild("Label") :: TextLabel?
+				if tooltipLabel then
+					tooltipLabel.Text = textBox.Text
+				end
+				tooltip.Visible = true
+
+				local absPos = textBox.AbsolutePosition
+				local absSize = textBox.AbsoluteSize
+				local framePos = (mainFrame :: Frame).AbsolutePosition
+				local tooltipX = absPos.X - framePos.X
+				local tooltipY = absPos.Y - framePos.Y + absSize.Y + 4
+				local frameSize = (mainFrame :: Frame).AbsoluteSize
+				local tooltipSize = tooltip.AbsoluteSize
+				if tooltipX + tooltipSize.X > frameSize.X then
+					tooltipX = frameSize.X - tooltipSize.X - 4
+				end
+				if tooltipY + tooltipSize.Y > frameSize.Y then
+					tooltipY = absPos.Y - framePos.Y - tooltipSize.Y - 4
+				end
+				tooltip.Position = UDim2.fromOffset(math.max(4, tooltipX), math.max(4, tooltipY))
+				delayThread = nil
+			end)
+		end)
+
+		textBox.MouseLeave:Connect(function()
+			if delayThread then
+				task.cancel(delayThread)
+				delayThread = nil
+			end
+			tooltip.Visible = false
+		end)
+	end
+
+	-- Color picker support (picker opens on client, confirmed color sent to server)
+	local function ConnectSwatchButton(swatchButton: TextButton)
+		local proxyId = swatchButton:GetAttribute("_ProxyId")
+		if not proxyId then
+			return
+		end
+
+		local activePicker: any = nil
+
+		swatchButton.Activated:Connect(function()
+			if activePicker then
+				activePicker:Destroy()
+				activePicker = nil
+				return
+			end
+
+			activePicker = ColorPickerHelper.new({
+				Parent = screenGui,
+				InitialColor = swatchButton.BackgroundColor3,
+				Title = swatchButton.Parent and (swatchButton.Parent :: Frame):FindFirstChild("Label") and ((
+					swatchButton.Parent :: Frame
+				):FindFirstChild("Label") :: TextLabel).Text or "Pick Color",
+				Size = UDim2.fromOffset(280, 380),
+				Position = UDim2.fromScale(0.5, 0.5),
+				ShowAlpha = false,
+				ShowPresets = true,
+				ShowHSVSliders = false,
+				Theme = "Dark",
+				OnColorChanged = function(color: Color3, _alpha: number)
+					swatchButton.BackgroundColor3 = color
+				end,
+				OnConfirm = function(color: Color3, _alpha: number)
+					swatchButton.BackgroundColor3 = color
+					remote:FireServer(alias, "colorPickerConfirm", {
+						proxyId = proxyId,
+						r = math.round(color.R * 255),
+						g = math.round(color.G * 255),
+						b = math.round(color.B * 255),
+					})
+					if activePicker then
+						activePicker:Destroy()
+						activePicker = nil
+					end
+				end,
+				OnCancel = function()
+					if activePicker then
+						activePicker:Destroy()
+						activePicker = nil
+					end
+				end,
+			})
+		end)
+	end
+
+	-- Connect all existing descendants
+	for _, desc in screenGui:GetDescendants() do
+		if desc:IsA("ImageButton") or desc:IsA("TextButton") then
+			if desc.Name == "Swatch" and desc:GetAttribute("_ProxyId") then
+				ConnectSwatchButton(desc :: TextButton)
+			else
+				ConnectButton(desc)
+			end
+		elseif desc:IsA("TextBox") then
+			ConnectTextBox(desc)
+			if desc.Name == "FieldKey" or desc.Name == "FieldValue" then
+				ConnectTooltip(desc)
+			end
+		elseif desc.Name == "InfoBox" and desc:IsA("Frame") then
+			ConnectInfoBoxHover(desc)
+		end
+	end
+
+	-- Connect future descendants (entries added dynamically)
+	screenGui.DescendantAdded:Connect(function(desc)
+		if desc:IsA("ImageButton") or desc:IsA("TextButton") then
+			if desc.Name == "Swatch" and desc:GetAttribute("_ProxyId") then
+				ConnectSwatchButton(desc :: TextButton)
+			else
+				ConnectButton(desc)
+			end
+		elseif desc:IsA("TextBox") then
+			ConnectTextBox(desc)
+			if desc.Name == "FieldKey" or desc.Name == "FieldValue" then
+				ConnectTooltip(desc)
+			end
+		elseif desc.Name == "InfoBox" and desc:IsA("Frame") then
+			ConnectInfoBoxHover(desc)
+		end
+	end)
+
+	-- Resize handling
+	local footer = (mainFrame :: Frame):FindFirstChild("Footer")
+	local resizeButton = footer and (footer :: Frame):FindFirstChild("ResizeButton")
+	if resizeButton then
+		local resizing = false
+		local resizeOffset = Vector2.zero;
+		(resizeButton :: GuiButton).InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+				resizeOffset = ((mainFrame :: Frame).AbsolutePosition + (mainFrame :: Frame).AbsoluteSize) - mousePos
+				resizing = true
+			end
+		end)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if not resizing or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+				return
+			end
+			local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+			local size = mousePos - (mainFrame :: Frame).AbsolutePosition + resizeOffset
+			local x = math.clamp(size.X, 150, 1500)
+			local y = math.clamp(size.Y, 100, 1200);
+			(mainFrame :: Frame).Size = UDim2.fromOffset(x, y)
+			remote:FireServer(alias, "resize", { x = x, y = y })
+		end)
+
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				resizing = false
+			end
+		end)
+	end -- Close options menu on click elsewhere (handled locally on client)
+
+	(mainFrame :: Frame).InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local optionsMenu = (mainFrame :: Frame):FindFirstChild("OptionsMenu")
+			if optionsMenu and (optionsMenu :: Frame).Visible then
+				local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+				local menuPos = (optionsMenu :: GuiObject).AbsolutePosition
+				local menuSize = (optionsMenu :: GuiObject).AbsoluteSize
+				if
+					not (
+						mousePos.X >= menuPos.X
+						and mousePos.X <= menuPos.X + menuSize.X
+						and mousePos.Y >= menuPos.Y
+						and mousePos.Y <= menuPos.Y + menuSize.Y
+					)
+				then
+					if footer then
+						local hambBtn = (footer :: Frame):FindFirstChild("HamburgerButton")
+						if hambBtn then
+							local hambPos = (hambBtn :: GuiObject).AbsolutePosition
+							local hambSize = (hambBtn :: GuiObject).AbsoluteSize
+							if
+								not (
+									mousePos.X >= hambPos.X
+									and mousePos.X <= hambPos.X + hambSize.X
+									and mousePos.Y >= hambPos.Y
+									and mousePos.Y <= hambPos.Y + hambSize.Y
+								)
+							then
+								(optionsMenu :: Frame).Visible = false
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+local function FindDescendantByProxyId(parent: Instance, proxyId: number): Instance?
+	for _, desc in parent:GetDescendants() do
+		if desc:GetAttribute("_ProxyId") == proxyId then
+			return desc
+		end
+	end
+	return nil
+end
+
+local function SetupTrueServerViewHandler()
+	if trueServerViewHandlerConnected then
+		return
+	end
+	trueServerViewHandlerConnected = true
+
+	local remote = GetOrCreateTrueServerViewActionRemote()
+	if not remote then
+		return
+	end
+
+	remote.OnServerEvent:Connect(function(player: Player, alias: any, action: any, data: any)
+		if typeof(alias) ~= "string" or typeof(action) ~= "string" then
+			return
+		end
+		if typeof(data) ~= "table" then
+			data = {}
+		end
+
+		local viewersByPlayer = trueServerViews[alias]
+		if not viewersByPlayer then
+			return
+		end
+		local viewer = viewersByPlayer[player.UserId]
+		if not viewer then
+			return
+		end
+
+		-- Dispatch actions
+		if action == "close" then
+			viewer:Destroy()
+		elseif action == "minimize" then
+			viewer:Minimize()
+		elseif action == "collapse" then
+			viewer:Collapse()
+		elseif action == "freeze" then
+			if viewer._frozen then
+				viewer:Unfreeze()
+			else
+				viewer:Freeze()
+			end
+		elseif action == "hamburger" then
+			if viewer._ui then
+				local optionsMenu = viewer._ui:FindFirstChild("OptionsMenu")
+				if optionsMenu then
+					optionsMenu.Visible = not optionsMenu.Visible
+				end
+			end
+		elseif action == "filterMode" then
+			-- Cycle the filter mode and re-apply filters
+			local modes = { "keys", "values", "both", "either" }
+			local modeLabels = { keys = "K", values = "V", both = "B", either = "E" }
+			local modePlaceholders = {
+				keys = "🔍 Filter keys...",
+				values = "🔍 Filter values...",
+				both = "🔍 Filter keys & values (AND)...",
+				either = "🔍 Filter keys | values (OR)...",
+			}
+			viewer._proxyFilterMode = viewer._proxyFilterMode or "keys"
+			local currentIdx = table.find(modes, viewer._proxyFilterMode :: string) or 1
+			viewer._proxyFilterMode = modes[currentIdx % #modes + 1]
+
+			-- Update the button text on the server (replicates to client)
+			if viewer._ui then
+				local footer = viewer._ui:FindFirstChild("Footer")
+				if footer then
+					local filterModeBtn = FindFooterChild(footer, "FilterModeButton")
+					if filterModeBtn then
+						(filterModeBtn :: TextButton).Text = modeLabels[viewer._proxyFilterMode]
+					end
+					local fieldFilter = FindFooterChild(footer, "FieldFilter")
+					if fieldFilter then
+						(fieldFilter :: TextBox).PlaceholderText = modePlaceholders[viewer._proxyFilterMode]
+					end
+				end
+			end
+
+			-- Re-apply filters with new mode using current filter text
+			if viewer._ui then
+				local footer = viewer._ui:FindFirstChild("Footer")
+				if footer then
+					local fieldFilter = FindFooterChild(footer, "FieldFilter")
+					if fieldFilter then
+						local rawTokens = (fieldFilter :: TextBox).Text:split(",")
+						local filters: { string } = {}
+						for _, token in rawTokens do
+							local trimmed = token:gsub("^%s+", ""):gsub("%s+$", "")
+							if trimmed ~= "" then
+								table.insert(filters, trimmed)
+							end
+						end
+						if filters[1] then
+							local mode = viewer._proxyFilterMode
+							if mode == "keys" then
+								viewer:SetKeyFilter(filters)
+								viewer:SetValueFilter(nil)
+								viewer._filterCombineMode = nil
+							elseif mode == "values" then
+								viewer:SetKeyFilter(nil)
+								viewer:SetValueFilter(filters)
+								viewer._filterCombineMode = nil
+							elseif mode == "both" then
+								viewer:SetKeyFilter(filters)
+								viewer:SetValueFilter(filters)
+								viewer._filterCombineMode = "and"
+							else
+								viewer:SetKeyFilter(filters)
+								viewer:SetValueFilter(filters)
+								viewer._filterCombineMode = "or"
+							end
+						else
+							viewer:SetKeyFilter(nil)
+							viewer:SetValueFilter(nil)
+							viewer._filterCombineMode = nil
+						end
+					end
+				end
+			end
+		elseif action == "filterText" then
+			local text = if typeof(data.text) == "string" then data.text else ""
+			-- Update the TextBox on the server
+			if viewer._ui then
+				local footer = viewer._ui:FindFirstChild("Footer")
+				if footer then
+					local fieldFilter = FindFooterChild(footer, "FieldFilter")
+					if fieldFilter then
+						(fieldFilter :: TextBox).Text = text
+					end
+				end
+			end
+			-- Parse and apply filters
+			local rawTokens = text:split(",")
+			local filters: { string } = {}
+			for _, token in rawTokens do
+				local trimmed = token:gsub("^%s+", ""):gsub("%s+$", "")
+				if trimmed ~= "" then
+					table.insert(filters, trimmed)
+				end
+			end
+			local mode = viewer._proxyFilterMode or "keys"
+			if filters[1] then
+				if mode == "keys" then
+					viewer:SetKeyFilter(filters)
+					viewer:SetValueFilter(nil)
+					viewer._filterCombineMode = nil
+				elseif mode == "values" then
+					viewer:SetKeyFilter(nil)
+					viewer:SetValueFilter(filters)
+					viewer._filterCombineMode = nil
+				elseif mode == "both" then
+					viewer:SetKeyFilter(filters)
+					viewer:SetValueFilter(filters)
+					viewer._filterCombineMode = "and"
+				else
+					viewer:SetKeyFilter(filters)
+					viewer:SetValueFilter(filters)
+					viewer._filterCombineMode = "or"
+				end
+			else
+				viewer:SetKeyFilter(nil)
+				viewer:SetValueFilter(nil)
+				viewer._filterCombineMode = nil
+			end
+		elseif action == "exclusionText" then
+			local text = if typeof(data.text) == "string" then data.text else ""
+			if viewer._ui then
+				local footer = viewer._ui:FindFirstChild("Footer")
+				if footer then
+					local exclusionsBox = FindFooterChild(footer, "Exclusions")
+					if exclusionsBox then
+						(exclusionsBox :: TextBox).Text = text
+					end
+				end
+			end
+			local rawTokens = text:split(",")
+			local types: { string } = {}
+			for _, token in rawTokens do
+				local trimmed = token:gsub("^%s+", ""):gsub("%s+$", "")
+				if trimmed ~= "" then
+					table.insert(types, trimmed)
+				end
+			end
+			if types[1] then
+				viewer:SetTypeExclusion(types)
+			else
+				viewer:SetTypeExclusion(nil)
+			end
+		elseif action == "toggleExpand" then
+			local entryPath = data.entryPath
+			if typeof(entryPath) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc then
+					local currentState = viewer:_GetAssociationExpansionState(assoc)
+					viewer:_SetAssociationExpanded(assoc, not currentState, data.shift == true)
+				end
+			end
+		elseif action == "focus" then
+			local entryPath = data.entryPath
+			if typeof(entryPath) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc then
+					local path = viewer:_GetAssociationPath(assoc)
+					viewer:FocusTable(path)
+				end
+			end
+		elseif action == "freezeValue" then
+			local entryPath = data.entryPath
+			if typeof(entryPath) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc then
+					local path = viewer:_GetAssociationPath(assoc)
+					if viewer._frozenValues[entryPath] then
+						viewer:UnfreezeValue(path)
+					else
+						viewer:FreezeValue(path)
+					end
+				end
+			end
+		elseif action == "deleteEntry" then
+			local entryPath = data.entryPath
+			if typeof(entryPath) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc then
+					local path = viewer:_GetAssociationPath(assoc)
+					if path[1] then
+						local parentPath = {}
+						for i = 1, #path - 1 do
+							table.insert(parentPath, path[i])
+						end
+						viewer:RemoveRow(parentPath, path[#path])
+					end
+				end
+			end
+		elseif action == "editKey" then
+			local entryPath = data.entryPath
+			local newText = data.text
+			if typeof(entryPath) == "string" and typeof(newText) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc and viewer.Options.Editable then
+					local trimmed = newText:gsub("^%s+", ""):gsub("%s+$", "")
+					if trimmed ~= "" then
+						local newKey: any = if tonumber(trimmed) then tonumber(trimmed) else trimmed
+						if newKey ~= assoc.Key then
+							local path = viewer:_GetAssociationPath(assoc)
+							if path[1] then
+								local parentPath: { any } = {}
+								for i = 1, #path - 1 do
+									table.insert(parentPath, path[i])
+								end
+								local parentTable = viewer.Data
+								for _, k in parentPath do
+									if typeof(parentTable) ~= "table" then
+										return
+									end
+									parentTable = parentTable[k]
+								end
+								if typeof(parentTable) == "table" and parentTable[newKey] == nil then
+									parentTable[newKey] = parentTable[assoc.Key]
+									parentTable[assoc.Key] = nil
+									viewer:Update(viewer.Data)
+								end
+							end
+						end
+					end
+				end
+			end
+		elseif action == "editValue" then
+			local entryPath = data.entryPath
+			local newText = data.text
+			if typeof(entryPath) == "string" and typeof(newText) == "string" then
+				local assoc = viewer._associations[entryPath]
+				if assoc and viewer.Options.Editable then
+					local parsedValue = ParseInputValue(newText)
+					local path = viewer:_GetAssociationPath(assoc)
+					if path[1] then
+						local parentPath: { any } = {}
+						for i = 1, #path - 1 do
+							table.insert(parentPath, path[i])
+						end
+						local parentTable = viewer.Data
+						for _, k in parentPath do
+							if typeof(parentTable) ~= "table" then
+								return
+							end
+							parentTable = parentTable[k]
+						end
+						if typeof(parentTable) == "table" then
+							parentTable[path[#path]] = parsedValue
+							viewer:Update(viewer.Data)
+						end
+					end
+				end
+			end
+		elseif action == "addRow" then
+			local keyText = if typeof(data.keyText) == "string" then data.keyText else ""
+			local valueText = if typeof(data.valueText) == "string" then data.valueText else ""
+			local parentEntryPath = data.parentEntryPath
+
+			local parentPath: { any } = {}
+			if typeof(parentEntryPath) == "string" and parentEntryPath ~= "" then
+				local assoc = viewer._associations[parentEntryPath]
+				if assoc then
+					parentPath = viewer:_GetAssociationPath(assoc)
+				end
+			end
+
+			local parsedKey = ParseKeyInput(keyText)
+			if parsedKey == nil then
+				-- Auto-generate key
+				local targetTable = viewer.Data
+				for _, k in parentPath do
+					if typeof(targetTable) == "table" then
+						targetTable = targetTable[k]
+					end
+				end
+				if typeof(targetTable) == "table" then
+					parsedKey = GenerateAutoKey(targetTable)
+				else
+					parsedKey = 1
+				end
+			end
+			local parsedValue = ParseInputValue(valueText)
+			local success = viewer:AddRow(parentPath, parsedKey, parsedValue)
+			if success then
+				-- Clear ghost row inputs on the server (replicates to client)
+				if typeof(parentEntryPath) == "string" and parentEntryPath ~= "" then
+					local assoc = viewer._associations[parentEntryPath]
+					if assoc and assoc.Gui then
+						local childrenFrame = (assoc.Gui :: any):FindFirstChild("Children")
+						if childrenFrame then
+							local ghostRow = childrenFrame:FindFirstChild("GhostRow")
+							if ghostRow then
+								local ki = ghostRow:FindFirstChild("KeyInput")
+								local vi = ghostRow:FindFirstChild("ValueInput")
+								if ki then
+									(ki :: TextBox).Text = ""
+								end
+								if vi then
+									(vi :: TextBox).Text = ""
+								end
+							end
+						end
+					end
+				else
+					-- Root ghost row
+					if viewer._ui then
+						local viewerArea = viewer._ui:FindFirstChild("Viewer")
+						if viewerArea then
+							local scrollTable = viewerArea:FindFirstChild("Table")
+							if scrollTable then
+								local rootGhost = scrollTable:FindFirstChild("RootGhostRow")
+								if rootGhost then
+									local ki = rootGhost:FindFirstChild("KeyInput")
+									local vi = rootGhost:FindFirstChild("ValueInput")
+									if ki then
+										(ki :: TextBox).Text = ""
+									end
+									if vi then
+										(vi :: TextBox).Text = ""
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		elseif action == "resize" then
+			local x = data.x
+			local y = data.y
+			if typeof(x) == "number" and typeof(y) == "number" then
+				if viewer._ui then
+					viewer._ui.Size = UDim2.fromOffset(
+						math.clamp(x, viewer.Options.MinSize.X, viewer.Options.MaxSize.X),
+						math.clamp(y, viewer.Options.MinSize.Y, viewer.Options.MaxSize.Y)
+					)
+				end
+			end
+		elseif action == "proxy" then
+			local proxyId = data.proxyId
+			if typeof(proxyId) == "number" and viewer._ui then
+				local element = FindDescendantByProxyId(viewer._ui :: any, proxyId)
+				if element then
+					local prev = tonumber(element:GetAttribute("_Proxy")) or 0
+					element:SetAttribute("_Proxy", prev + 1)
+				end
+			end
+		elseif action == "proxyText" then
+			local proxyId = data.proxyId
+			local text = data.text
+			if typeof(proxyId) == "number" and typeof(text) == "string" and viewer._ui then
+				local element = FindDescendantByProxyId(viewer._ui :: any, proxyId)
+				if element and element:IsA("TextBox") then
+					element.Text = text
+					local prev = tonumber(element:GetAttribute("_Proxy")) or 0
+					element:SetAttribute("_Proxy", prev + 1)
+				end
+			end
+		elseif action == "colorPickerConfirm" then
+			local proxyId = data.proxyId
+			local r = data.r
+			local g = data.g
+			local b = data.b
+			if
+				typeof(proxyId) == "number"
+				and typeof(r) == "number"
+				and typeof(g) == "number"
+				and typeof(b) == "number"
+				and viewer._ui
+			then
+				local element = FindDescendantByProxyId(viewer._ui :: any, proxyId)
+				if element then
+					local colorStr =
+						string.format("%d,%d,%d", math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+					element:SetAttribute("_ProxyColor", colorStr)
+				end
+			end
+		end
+	end)
+end
 
 --- Functions ---
 
@@ -727,13 +1635,10 @@ function TableEditor.FreezeValue(self: InternalTableEditor, path: { any })
 	-- Update the UI to show frozen state
 	local association = self._associations[pathStr]
 	if association and association.Gui then
-		local freezeBtn = association.Gui:FindFirstChild("InfoBox")
-			and association.Gui.InfoBox:FindFirstChild("FreezeValueButton")
+		local infoBox = association.Gui:FindFirstChild("InfoBox")
+		local freezeBtn = infoBox and infoBox:FindFirstChild("FreezeValueButton")
 		if freezeBtn then
-			local icon = freezeBtn:FindFirstChild("Icon")
-			if icon then
-				icon.ImageColor3 = Color3.fromRGB(100, 180, 255)
-			end
+			SetMaterialIcon(freezeBtn, "PlayArrow", Color3.fromRGB(100, 200, 100))
 			freezeBtn.Visible = true
 		end
 	end
@@ -752,13 +1657,24 @@ function TableEditor.UnfreezeValue(self: InternalTableEditor, path: { any })
 	-- Update the UI to show unfrozen state
 	local association = self._associations[pathStr]
 	if association and association.Gui then
-		local freezeBtn = association.Gui:FindFirstChild("InfoBox")
-			and association.Gui.InfoBox:FindFirstChild("FreezeValueButton")
+		local infoBox = association.Gui:FindFirstChild("InfoBox")
+		local freezeBtn = infoBox and infoBox:FindFirstChild("FreezeValueButton")
 		if freezeBtn then
-			local icon = freezeBtn:FindFirstChild("Icon")
-			if icon then
-				icon.ImageColor3 = Color3.fromRGB(150, 150, 155)
+			SetMaterialIcon(freezeBtn, "Pause", Color3.fromRGB(100, 180, 255))
+		end
+
+		-- Update the displayed value to current data
+		if association.Value ~= nil then
+			local currentValue = self.Data
+			for _, key in ipairs(path) do
+				if typeof(currentValue) == "table" then
+					currentValue = currentValue[key]
+				else
+					break
+				end
 			end
+			association.Value = currentValue
+			self:_UpdateEntryUI(association)
 		end
 	end
 end
@@ -795,13 +1711,10 @@ function TableEditor.UnfreezeAllValues(self: InternalTableEditor)
 		self._frozenValues[pathStr] = nil
 		local association = self._associations[pathStr]
 		if association and association.Gui then
-			local freezeBtn = association.Gui:FindFirstChild("InfoBox")
-				and association.Gui.InfoBox:FindFirstChild("FreezeValueButton")
+			local infoBox = association.Gui:FindFirstChild("InfoBox")
+			local freezeBtn = infoBox and infoBox:FindFirstChild("FreezeValueButton")
 			if freezeBtn then
-				local icon = freezeBtn:FindFirstChild("Icon")
-				if icon then
-					icon.ImageColor3 = Color3.fromRGB(150, 150, 155)
-				end
+				SetMaterialIcon(freezeBtn, "Pause", Color3.fromRGB(100, 180, 255))
 			end
 		end
 	end
@@ -4071,6 +4984,7 @@ function TableEditor._CreateEntry(self: InternalTableEditor, association: Associ
 
 	-- Check if this value is frozen and apply frozen value early
 	local pathStr = self:_GetAssociationPathString(association)
+	entry:SetAttribute("EntryPath", pathStr)
 	local isValueFrozen = self._frozenValues[pathStr] ~= nil
 	if isValueFrozen then
 		association.Value = self._frozenValues[pathStr]
@@ -8717,6 +9631,86 @@ function TableEditor.ServerView(
 	return results
 end
 
+-- TODO: client actions such as expanding not working since the connections are never made
+function TableEditor.TrueServerView(players: { Player }, name: string, data: Table?, options: ViewerOptions?)
+	if not IS_SERVER then
+		warn("[TableEditor.TrueServerView] This function can only be called from the server")
+		return
+	end
+
+	assert(type(name) == "string" and name ~= "", "View name must be a non-empty string")
+
+	-- Ensure remote and handler are set up
+	GetOrCreateTrueServerViewActionRemote()
+	SetupTrueServerViewHandler()
+
+	local safeData: Table = data or {}
+	local alias = `{name}TrueServerView`
+
+	if not trueServerViews[alias] then
+		trueServerViews[alias] = {}
+	end
+
+	for _, player in ipairs(players) do
+		if not (typeof(player) == "Instance" and player:IsA("Player")) then
+			continue
+		end
+
+		local userId = player.UserId
+
+		-- If view already exists for this player, update it
+		local existingView = trueServerViews[alias][userId]
+		if existingView then
+			if existingView._ui and existingView._ui.Parent then
+				existingView:Update(safeData)
+				continue
+			end
+			-- View was destroyed externally, clean up reference
+			trueServerViews[alias][userId] = nil
+		end
+
+		local playerGui = player:FindFirstChild("PlayerGui")
+		if not playerGui then
+			warn(`[TableEditor.TrueServerView] PlayerGui not found for {player.Name}`)
+			continue
+		end
+
+		-- Merge options with defaults
+		local mergedOptions: ViewerOptions = options and DeepClone(options) or {}
+		mergedOptions.Title = mergedOptions.Title or name
+
+		-- Create a dedicated ScreenGui for this view
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Name = alias
+		screenGui.ResetOnSpawn = false
+		screenGui.DisplayOrder = 1000
+		screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		mergedOptions.Parent = screenGui
+
+		-- Create the TableEditor instance
+		local viewer = TableEditor.new(safeData, mergedOptions)
+		local internalViewer = viewer :: any
+		internalViewer._isTrueServerView = true
+		internalViewer._trueServerViewAlias = alias
+		internalViewer._proxyFilterMode = "keys"
+
+		-- Store reference
+		trueServerViews[alias][userId] = viewer
+
+		-- Wrap the Destroy method to clean up reference
+		local originalDestroy = internalViewer.Destroy
+		function internalViewer:Destroy()
+			if trueServerViews[alias] then
+				trueServerViews[alias][userId] = nil
+			end
+			originalDestroy(self)
+		end
+
+		-- Parent the ScreenGui to the player's PlayerGui
+		screenGui.Parent = playerGui
+	end
+end
+
 --[[
 	Handles verification response from client.
 	Compares the data received by client with the original to detect serialization issues.
@@ -8840,6 +9834,30 @@ end
 -- Initialize listeners based on context
 if IS_CLIENT then
 	SetupClientServerViewListener()
+
+	-- Watch for TrueServerView ScreenGuis and set up client-side input proxy
+	task.spawn(function()
+		local localPlayer = Players.LocalPlayer
+		if not localPlayer then
+			return
+		end
+
+		local playerGui = localPlayer:WaitForChild("PlayerGui", 30)
+		if not playerGui then
+			return
+		end
+
+		local function onChildAdded(child: Instance)
+			if child:IsA("ScreenGui") and child.Name:match("TrueServerView$") then
+				task.spawn(SetupTrueServerViewClientProxy, child :: ScreenGui)
+			end
+		end
+
+		for _, child in (playerGui :: Instance):GetChildren() do
+			onChildAdded(child)
+		end
+		(playerGui :: Instance).ChildAdded:Connect(onChildAdded)
+	end)
 elseif IS_SERVER then
 	SetupServerVerificationListener()
 end
