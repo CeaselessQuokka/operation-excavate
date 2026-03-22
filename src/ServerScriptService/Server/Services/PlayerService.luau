@@ -32,8 +32,8 @@ local diedEvents = {} :: { [Player]: Signal<> }
 
 --- Functions ---
 function InitializeCharacter(character: UsableCharacter, player: Player)
-	local rootPart = character.HumanoidRootPart
 	do -- Create custom movement attached, and custom gravity force.
+		local rootPart = (character :: CharacterHelper.ValidR15Character).LowerTorso
 		local movementAttachment: Attachment = (ServerStorage :: any).Assets.Character.MovementAttachment:Clone()
 		local gravityForce: VectorForce = (ServerStorage :: any).Assets.Character.Gravity:Clone()
 		movementAttachment.Parent = rootPart
@@ -43,6 +43,7 @@ function InitializeCharacter(character: UsableCharacter, player: Player)
 	end
 
 	do -- Create custom movement controller.
+		local rootPart = character.HumanoidRootPart
 		local controller: ControllerManager & {
 			AirController: AirController,
 			GroundController: GroundController,
@@ -70,7 +71,7 @@ local PlayerService = {
 	OnDied = Signal.new() :: Signal<Player>,
 
 	OnResetRequested = Remote.Event("OnResetRequested", {
-		CooldownPerFire = 10, -- TODO: change to 5 after testing.
+		CooldownPerFire = 5,
 	}) :: ServerApi<()>,
 }
 

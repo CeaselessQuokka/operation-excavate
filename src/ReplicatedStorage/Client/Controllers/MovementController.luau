@@ -54,7 +54,7 @@ do -- Initialize controller.
 
 		-- TODO: need to check if on non-cancollide part, so they can't walk on top of it (could be cool to have walk on water boots or something)
 		-- TODO: make more efficient (only run if moving and stuff if possible)
-		-- TODO: try to stop their character from rotating when inptu stops, like normal character controls
+		-- TODO: try to stop their character from rotating when input stops, like normal character controls
 		local movementVelocity = cleaner:Add(Instance.new("LinearVelocity"))
 		movementVelocity.Attachment0 = movementAttachment
 		movementVelocity.RelativeTo = Enum.ActuatorRelativeTo.Attachment0

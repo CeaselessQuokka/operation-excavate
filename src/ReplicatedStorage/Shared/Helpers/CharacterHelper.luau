@@ -188,7 +188,6 @@ function CharacterHelper.GetCharacterFromLimb(limb: ResolvableCharacterInstance?
 	elseif rigType == "R6" and not (R6_LIMB_INCLUDE_LIST :: any)[limb.Name] then
 		return nil
 	end
-
 	return if Players:GetPlayerFromCharacter(character :: any) then character :: Character else nil
 end
 
@@ -203,12 +202,11 @@ function CharacterHelper.GetAnimator(instance: ResolvableCharacterInstance?, cre
 		return nil
 	end
 
-	local animator = humanoid:FindFirstChildOfClass("Animator")
+	local animator = humanoid:FindFirstChildOfClass("Animator") :: Animator
 	if not animator and createAnimator then
-		-- Types were being weird whenever I tried to reassign "animator". Thus the new variable.
-		local newAnimator = Instance.new("Animator")
-		newAnimator.Parent = humanoid
-		return newAnimator
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+		return animator
 	end
 	return animator
 end
@@ -233,8 +231,7 @@ end
 
 function CharacterHelper.GetRootPart(instance: ResolvableCharacterInstance?): BasePart?
 	local character = CharacterHelper.GetCharacter(instance)
-	local rootPart = if character then character:FindFirstChild("HumanoidRootPart") else nil
-	return if rootPart and rootPart:IsA("BasePart") then rootPart else nil
+	return if character then character:QueryDescendants(">BasePart#HumanoidRootPart")[1] else nil
 end
 
 function CharacterHelper.IsPlayer(instance: ResolvableCharacterInstance?): boolean
@@ -264,14 +261,11 @@ function CharacterHelper.IsValid(instance: ResolvableCharacterInstance?): boolea
 	elseif rigType == "R6" and usableCharacter.PrimaryPart ~= usableCharacter.Head then
 		return false
 	end
-
 	for name in (if rigType == "R15" then R15_LIMB_INCLUDE_LIST else R6_LIMB_INCLUDE_LIST) :: any do
-		local limb = usableCharacter:FindFirstChild(name :: string)
-		if not limb or not limb:IsA("BasePart") then
+		if not usableCharacter:QueryDescendants(`>BasePart#{name}`)[1] then
 			return false
 		end
 	end
-
 	return true
 end
 
@@ -323,7 +317,6 @@ function CharacterHelper.DistanceFrom(
 		if math.abs(origin.Y - point.Y) > math.abs((yThreshold or 10)) then
 			return math.huge
 		end
-
 		local displacement = origin - point
 		return math.sqrt(displacement.X ^ 2 + displacement.Z ^ 2)
 	end
