@@ -1086,6 +1086,7 @@ function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): P
 end
 
 function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult
+	self._generated[chunkIndex] = true
 	local chunkType, chunkSeed, hasContent, region = self:_ComputeChunkData(chunkIndex)
 	local isWater = false
 	if hasContent then
@@ -1110,7 +1111,6 @@ function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number
 		end
 		workspace.Terrain:WriteVoxels(region :: Region3, RESOLUTION, self._reuseMats, self._reuseOccs)
 	end
-	self._generated[chunkIndex] = true
 	return { ChunkType = chunkType, IsWater = isWater, ChunkSeed = chunkSeed }
 end
 

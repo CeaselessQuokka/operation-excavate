@@ -15,12 +15,28 @@ local OwnedBy = Jecs.tag()
 local Private = Jecs.tag()
 local Alive = Jecs.tag()
 
+local Dropped = Jecs.tag()
+local ResourceType = Jecs.tag()
+local Dirt = Jecs.tag()
+local Stone = Jecs.tag()
+local Bauxite = Jecs.tag()
+local Coal = Jecs.tag()
+
 local World = Jecs.world(true)
 
---- Functions ---
+--- Variables ---
+local RESOURCE_TYPE_MAP = {
+	-- Note: the index of the element is the ID.
+	Dirt,
+	Stone,
+	Bauxite,
+	Coal,
+}
 
 --- Jecs Common ---
-return {
+local JecsCommon = {
+	ResourceTypeMap = RESOURCE_TYPE_MAP,
+	NResourceTypes = #RESOURCE_TYPE_MAP,
 	World = World,
 	Components = {
 		-- Player Characters
@@ -35,12 +51,16 @@ return {
 		-- Gravity System
 		Gravity = World:component() :: Jecs.Id<VectorForce?>,
 
-		-- Items
-		Item = World:component() :: Jecs.Id<{
-			Type: string,
-			CFrameIndex: number?,
-			Stack: number?,
+		-- Resource Grid
+		Grid = World:component() :: Jecs.Id<{
+			Center: Vector3,
+			Size: Vector3,
 		}>,
+		ResourceChunk = World:component() :: Jecs.Id<{
+			ChunkIndex: number,
+			Resources: { number }, -- Array of resource IDs.
+		}>,
+		Resource = World:component() :: Jecs.Id<number>, -- number is the CFrame index.
 	},
 	Tags = {
 		-- General
@@ -52,5 +72,23 @@ return {
 
 		-- Climbing System
 		Climbing = Climbing,
+
+		-- Resource Grid
+		Dropped = Dropped,
+		ResourceType = ResourceType,
+		Dirt = Dirt,
+		Stone = Stone,
+		Bauxite = Bauxite,
+		Coal = Coal,
 	},
 }
+do -- Register names for debugging purposes.
+	for name: string, component: Jecs.Id in JecsCommon.Components :: { [any]: any } do
+		World:set(component, Jecs.Name, name)
+	end
+	for name: string, tag: Jecs.Id in JecsCommon.Tags :: { [any]: any } do
+		World:set(tag, Jecs.Name, name)
+	end
+end
+
+return JecsCommon

@@ -1,11 +1,14 @@
 --!strict
 --- Services ---
+local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 --- Imports ---
-local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
+-- local Jabby = require(ReplicatedStorage.Packages.Jabby)
+
+local TableEditor = require(ReplicatedStorage.Shared.TableEditor) -- Keep for debugging purposes; needed to hook up client connections.
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
@@ -34,8 +37,19 @@ while true do
 	task.wait(1)
 end
 
--- Jecs world viewer.
-while true do
-	TableEditor.View("[Client] Jecs World", { World = JecsCommon.World })
-	task.wait(2.5)
-end
+-- Setup Jabby.
+-- local client = Jabby.obtain_client()
+-- local function create_widget(_, state: Enum.UserInputState)
+-- 	if state == Enum.UserInputState.Begin then
+-- 		client.spawn_app(client.apps.home, nil)
+-- 	end
+-- end
+-- ContextActionService:BindAction("JecsDebugger", create_widget, false, Enum.KeyCode.F4)
+
+-- Jabby.register({
+-- 	applet = Jabby.applets.world,
+-- 	name = "Client",
+-- 	configuration = {
+-- 		world = JecsCommon.World,
+-- 	},
+-- })
