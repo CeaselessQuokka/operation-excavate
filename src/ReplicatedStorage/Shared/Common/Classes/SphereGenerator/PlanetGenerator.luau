@@ -14,6 +14,7 @@
 		planet.Grid -- direct access to the Infinigrid instance
 ]]
 
+--!native
 --!strict
 
 --- Imports ---
@@ -1083,6 +1084,70 @@ function PlanetGenerator.PeekChunk(self: PlanetGenerator, chunkIndex: number): P
 		Generated = generated,
 		ChunkSeed = chunkSeed,
 	}
+end
+
+function PlanetGenerator.FastPeekChunk(self: PlanetGenerator, chunkIndex: number): (boolean, boolean)
+	-- Returns (isAir, generated). Lightweight alternative to PeekChunk that avoids
+	-- table allocations and limits surface lookups to a single sample.
+	local sizeYZ = self._sizeYZ
+	local sizeZ = self._sizeZ
+	local remainder = chunkIndex % sizeYZ
+	local gx = chunkIndex // sizeYZ
+	local gy = remainder // sizeZ
+	local gz = remainder % sizeZ
+
+	local generated = self._generated[chunkIndex] == true
+
+	local halfWorld = self.Grid.GridWorldSize.X / 2
+	local cs = self.Grid.ChunkSize
+	local x0 = -halfWorld + gx * cs
+	local y0 = -halfWorld + gy * cs
+	local z0 = -halfWorld + gz * cs
+	local x1 = x0 + cs
+	local y1 = y0 + cs
+	local z1 = z0 + cs
+
+	-- Min distance from origin to AABB (clamp origin into box)
+	local clX = mathClamp(0, x0, x1)
+	local clY = mathClamp(0, y0, y1)
+	local clZ = mathClamp(0, z0, z1)
+	local minDist = mathSqrt(clX * clX + clY * clY + clZ * clZ)
+
+	-- Entirely outside the outer bound -> definitely Air
+	if minDist > self._outerBound then
+		return true, generated
+	end
+
+	-- Max distance from origin to AABB (farthest corner)
+	local fX = if math.abs(x0) > math.abs(x1) then x0 else x1
+	local fY = if math.abs(y0) > math.abs(y1) then y0 else y1
+	local fZ = if math.abs(z0) > math.abs(z1) then z0 else z1
+	local maxDist = mathSqrt(fX * fX + fY * fY + fZ * fZ)
+
+	-- Entirely inside the inner bound -> definitely not Air
+	if maxDist <= self._innerBound then
+		return false, generated
+	end
+
+	-- Single surface radius lookup at chunk center for a tighter Air check
+	local half = cs * 0.5
+	local mx = x0 + half
+	local my = y0 + half
+	local mz = z0 + half
+	local cd = mathSqrt(mx * mx + my * my + mz * mz)
+
+	if cd > 0.001 then
+		local invCd = 1 / cd
+		local sr = surfaceRadiusLookup(self._gridSR, mx * invCd, my * invCd, mz * invCd)
+		-- Conservative margin of one chunk size accounts for surface radius
+		-- variation across the chunk's angular footprint
+		if minDist > math.max(sr, SEA_LEVEL) + cs then
+			return true, generated
+		end
+	end
+
+	-- Cannot confirm Air with fast checks alone
+	return false, generated
 end
 
 function PlanetGenerator.GenerateChunk(self: PlanetGenerator, chunkIndex: number): GenerateChunkResult

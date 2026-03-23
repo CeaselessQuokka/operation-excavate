@@ -7,6 +7,11 @@ local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 --- Types ---
+export type ResourceChunkData = {
+	ChunkIndex: number,
+	Resources: { number }, -- Array of resource IDs.
+}
+
 type UsableCharacter = CharacterHelper.UsableCharacter
 
 --- Variables ---
@@ -56,10 +61,7 @@ local JecsCommon = {
 			Center: Vector3,
 			Size: Vector3,
 		}>,
-		ResourceChunk = World:component() :: Jecs.Id<{
-			ChunkIndex: number,
-			Resources: { number }, -- Array of resource IDs.
-		}>,
+		ResourceChunk = World:component() :: Jecs.Id<ResourceChunkData>,
 		Resource = World:component() :: Jecs.Id<number>, -- number is the CFrame index.
 	},
 	Tags = {

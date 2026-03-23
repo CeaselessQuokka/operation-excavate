@@ -9,6 +9,7 @@ local PlanetResourceService = require(script.Parent.PlanetResourceService)
 local PlayerService = require(script.Parent.PlayerService)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
+local DiagnosticHelper = require(ReplicatedStorage.Shared.Helpers.DiagnosticHelper)
 local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Planet = require(ReplicatedStorage.Shared.Common.Planet)
 local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.PlanetGenerator)
@@ -49,54 +50,84 @@ do -- Service initialization.
 	task.wait(3)
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
-	for x = -50, 50 do
-		for y = -3, 3 do
-			for z = -50, 50 do
+	for x = -100, 100 do
+		for y = -2, 1 do
+			for z = -100, 100 do
 				table.insert(sortedOffsets, Vector3.new(x, y, z))
 			end
 		end
 	end
+	local sorted = table.clone(sortedOffsets)
+	table.sort(sorted, function(a: Vector3, b: Vector3)
+		return a.Magnitude < b.Magnitude
+	end)
+	-- local sizeZ = planet.Grid.GridSize.Z
 	local function GenerateChunksAroundGridPosition(gridPosition: Vector3)
-		local sorted = table.clone(sortedOffsets)
-		table.sort(sorted, function(a: Vector3, b: Vector3)
-			return a.Magnitude < b.Magnitude
-		end)
-
-		local s = os.clock()
 		local nGenerated = 0
-		local lo, hi = 1, #sorted
-
-		while lo <= hi do
-			local lastGenerated = nGenerated
-
-			-- Center outward
-			local chunkIndex = planet:GridPositionToChunkIndex(gridPosition + sorted[lo])
-			local chunk = planet:PeekChunk(chunkIndex)
-			if not chunk.Generated and chunk.ChunkType ~= "Air" then
+		for _, offset in sorted do
+			local chunkIndex = planet:GridPositionToChunkIndex(gridPosition + offset)
+			local isAir, generated = planet:FastPeekChunk(chunkIndex)
+			if not generated and not isAir then
 				nGenerated += 1
 				PlanetResourceService.CreateChunk(chunkIndex)
-				task.spawn(planet.GenerateChunk, planet, chunkIndex)
+				planet:GenerateChunk(chunkIndex)
 			end
-
-			-- Edge inward
-			if hi ~= lo then
-				local chunkIndex2 = planet:GridPositionToChunkIndex(gridPosition + sorted[hi])
-				local chunk2 = planet:PeekChunk(chunkIndex2)
-				if not chunk2.Generated and chunk2.ChunkType ~= "Air" then
-					nGenerated += 1
-					PlanetResourceService.CreateChunk(chunkIndex2)
-					task.spawn(planet.GenerateChunk, planet, chunkIndex2)
-				end
-			end
-
-			lo += 1
-			hi -= 1
-
-			if lastGenerated ~= nGenerated and nGenerated % 12 <= 0 then
+			if nGenerated % 16 == 0 then
 				task.wait()
 			end
 		end
-		-- print(os.clock() - s)
+
+		-- local nGenerated = 0
+		-- local lo, hi = 1, #sorted
+		-- while lo <= hi do
+		-- 	local lastGenerated = nGenerated
+
+		-- 	-- Center outward
+		-- 	local chunkIndex = planet:GridPositionToChunkIndex(gridPosition + sorted[lo])
+		-- 	local isAir, generated = planet:FastPeekChunk(chunkIndex)
+		-- 	-- if not generated then
+		-- 	-- if isAir then
+		-- 	-- 	for yOffset = 1, 5 do
+		-- 	-- 		isAir, generated = planet:FastPeekChunk(chunkIndex - sizeZ)
+		-- 	-- 		if not generated and not isAir then
+		-- 	-- 			break
+		-- 	-- 		end
+		-- 	-- 	end
+		-- 	-- end
+		-- 	if not generated and not isAir then
+		-- 		nGenerated += 1
+		-- 		PlanetResourceService.CreateChunk(chunkIndex)
+		-- 		task.spawn(planet.GenerateChunk, planet, chunkIndex)
+		-- 	end
+		-- 	-- end
+
+		-- 	-- Edge inward
+		-- 	if hi ~= lo then
+		-- 		local chunkIndex2 = planet:GridPositionToChunkIndex(gridPosition + sorted[hi])
+		-- 		local isAir2, generated2 = planet:FastPeekChunk(chunkIndex2)
+		-- 		-- if not generated2 then
+		-- 		-- if isAir2 then
+		-- 		-- 	for yOffset = 1, 5 do
+		-- 		-- 		isAir2, generated2 = planet:FastPeekChunk(chunkIndex2 - sizeZ)
+		-- 		-- 		if not generated2 and not isAir2 then
+		-- 		-- 			break
+		-- 		-- 		end
+		-- 		-- 	end
+		-- 		-- end
+		-- 		if not generated2 and not isAir2 then
+		-- 			nGenerated += 1
+		-- 			PlanetResourceService.CreateChunk(chunkIndex2)
+		-- 			task.spawn(planet.GenerateChunk, planet, chunkIndex2)
+		-- 		end
+		-- 		-- end
+		-- 	end
+
+		-- 	lo += 1
+		-- 	hi -= 1
+		-- 	if lastGenerated ~= nGenerated and nGenerated % 16 <= 0 then
+		-- 		task.wait()
+		-- 	end
+		-- end
 	end
 
 	local planetGrid = planet.Grid
@@ -107,8 +138,8 @@ do -- Service initialization.
 	end)
 	task.spawn(function()
 		while true do
-			-- TODO: why does this run multiple times even after updating currentPosition?
-			task.wait(1 / 8)
+			task.wait(1 / 4)
+			local threads = 0
 			for player: Player, character: CharacterHelper.UsableR15Character in characters do
 				local lastPosition = lastPositions[player]
 				local currentPosition = character:GetPivot().Position
@@ -119,13 +150,18 @@ do -- Service initialization.
 				-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
 				lastPositions[player] = currentPosition
 				task.spawn(function()
+					threads += 1
 					local currentChunkIndex = planetGrid:_GetNearestChunkIndexAtPosition(character:GetPivot().Position)
 					local chunkGridPosition = planet:ChunkIndexToGridPosition(currentChunkIndex)
 					-- print(chunkGridPosition)
 					GenerateChunksAroundGridPosition(chunkGridPosition)
+					threads -= 1
 				end)
 			end
-			task.wait(1 / 8)
+			while threads > 0 do
+				task.wait(1 / 8)
+			end
+			print("DONE")
 		end
 	end)
 end
