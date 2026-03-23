@@ -3,51 +3,62 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 --- Imports ---
 local PlanetResourceService = require(script.Parent.PlanetResourceService)
 local PlayerService = require(script.Parent.PlayerService)
+local Remote = require(ReplicatedStorage.Shared.Common.Classes.Remote)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 local DiagnosticHelper = require(ReplicatedStorage.Shared.Helpers.DiagnosticHelper)
 local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
 local Planet = require(ReplicatedStorage.Shared.Common.Planet)
-local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGenerator.PlanetGenerator)
 local TableEditor = require(ReplicatedStorage.Shared.TableEditor)
 
 --- Variables ---
 local World = JecsCommon.World
 
---- PlanetService Service ---
-local PlanetService = {}
+--- Planet Terrain Service ---
+local PlanetTerrainService = {}
+
+function PlanetResourceService.PermissionTerraform(player: Player, point: Vector3): boolean
+	PlanetResourceService.PermissionTerraform(player, point)
+	return true
+end
+
+-- TODO: need to support shapes like box, ball, cone (drills), etc
+function PlanetTerrainService.Terraform(point: Vector3, radius: number)
+	Workspace.Terrain:FillBall(point, radius, Enum.Material.Air)
+	PlanetResourceService.Terraform(point, radius)
+end
 
 do -- Service initialization.
-	do -- Track FPS.
-		local fpsTable: { number } = table.create(60, task.wait())
-		local idx = 1
-		local t = 0
-		RunService.Heartbeat:Connect(function(dt)
-			t += dt
-			fpsTable[idx] = dt
-			idx = idx % 60 + 1
-			local tFps = 0
-			for _, v in fpsTable do
-				if v then
-					tFps += v
-				end
-			end
-			if t >= 0.375 then
-				-- if RunService:IsStudio() then
-				TableEditor.ServerView(Players:GetPlayers(), "Info", {
-					FPS = math.floor(1 / (tFps / 60)),
-				})
-				-- end
-				t = 0
-			end
-		end)
-	end
+	-- do -- Track FPS.
+	-- 	local fpsTable: { number } = table.create(60, task.wait())
+	-- 	local idx = 1
+	-- 	local t = 0
+	-- 	RunService.Heartbeat:Connect(function(dt)
+	-- 		t += dt
+	-- 		fpsTable[idx] = dt
+	-- 		idx = idx % 60 + 1
+	-- 		local tFps = 0
+	-- 		for _, v in fpsTable do
+	-- 			if v then
+	-- 				tFps += v
+	-- 			end
+	-- 		end
+	-- 		if t >= 0.375 then
+	-- 			-- if RunService:IsStudio() then
+	-- 			TableEditor.ServerView(Players:GetPlayers(), "Info", {
+	-- 				FPS = math.floor(1 / (tFps / 60)),
+	-- 			})
+	-- 			-- end
+	-- 			t = 0
+	-- 		end
+	-- 	end)
+	-- end
 
-	task.wait(3)
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
 	for x = -100, 100 do
@@ -164,6 +175,11 @@ do -- Service initialization.
 			print("DONE")
 		end
 	end)
+
+	local remote = Remote.Event("OnRequestTerraform") :: Remote.ServerApi<(Vector3, number)>
+	remote:Connect(function(player, point, radius)
+		PlanetTerrainService.Terraform(point, radius)
+	end)
 end
 
-return PlanetService
+return PlanetTerrainService

@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
+local Remote = require(ReplicatedStorage.Shared.Common.Classes.Remote)
 
 local SystemScheduler = require(ReplicatedStorage.Shared.Systems)
 
@@ -21,17 +22,17 @@ local ResourceChunk = JecsCommon.Components.ResourceChunk
 
 --- Server Resource System ---
 -- Get resource chunk cache.
-local pausedThread = coroutine.running()
 local resourceChunkArchetype: Jecs.Archetype
 local resourceChunks: { ResourceChunkData }
 local setCache: (() -> ())?
-setCache = World:added(ResourceChunk, function(_, _, resourceChunk: ResourceChunkData)
+setCache = World:added(ResourceChunk, function()
 	if setCache then
-		-- Wait for archetype to be made, and then set cache.
+		-- Set cache after archetype has been made.
 		setCache()
 		setCache = nil
 		resourceChunkArchetype = World:query(ResourceChunk):cached():archetypes()[1]
 		resourceChunks = resourceChunkArchetype.columns_map[ResourceChunk]
+		-- System logic.
 	end
 end)
 

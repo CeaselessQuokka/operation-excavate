@@ -27,6 +27,13 @@ local ResourceChunk = JecsCommon.Components.ResourceChunk
 --- Planet Resource Service ---
 local PlanetResourceService = {}
 
+function PlanetResourceService.PermissionTerraform(player: Player, point: Vector3): boolean
+	return true
+end
+
+-- TODO: need to support shapes like box, ball, cone (drills), etc
+function PlanetResourceService.Terraform(point: Vector3, radius: number) end
+
 -- TODO: will need to have different frontiers: a terrain frontier that generates terrain, a resource frontier that generates resources
 function PlanetResourceService.CreateChunk(chunkIndex: number)
 	local chunk = World:entity()
@@ -37,6 +44,7 @@ function PlanetResourceService.CreateChunk(chunkIndex: number)
 	end
 	World:set(chunk, ResourceChunk, { ChunkIndex = chunkIndex, Resources = resources })
 end
+
 do -- Service initialization.
 	local grid = World:entity()
 	local planetTerrain = Planet.Terrain

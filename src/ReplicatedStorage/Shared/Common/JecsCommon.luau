@@ -83,6 +83,29 @@ local JecsCommon = {
 		Bauxite = Bauxite,
 		Coal = Coal,
 	},
+
+	WaitForCache = function<ComponentData>(component: Jecs.Id<ComponentData>): ({ ComponentData }, Jecs.Archetype)
+		local archetype: Jecs.Archetype? = World:query(component):cached():archetypes()[1]
+		if archetype then
+			return archetype.columns_map[component], archetype
+		end
+
+		local pausedThread = coroutine.running()
+		local componentValues: { ComponentData }
+		local setCache: (() -> ())?
+		setCache = World:added(component, function()
+			if setCache then
+				-- Set cache after archetype has been made.
+				setCache()
+				setCache = nil
+				archetype = World:query(component):cached():archetypes()[1]
+				componentValues = archetype.columns_map[component]
+				task.spawn(pausedThread)
+			end
+		end)
+		coroutine.yield()
+		return componentValues, (archetype :: any) :: Jecs.Archetype
+	end,
 }
 do -- Register names for debugging purposes.
 	for name: string, component: Jecs.Id in JecsCommon.Components :: { [any]: any } do

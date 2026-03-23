@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
+local Remote = require(ReplicatedStorage.Shared.Common.Classes.Remote)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
@@ -109,6 +110,12 @@ do -- Initialize controller.
 	if localPlayer.Character then
 		task.defer(OnCharacterAdded, localPlayer.Character)
 	end
+
+	local remote = Remote.Event("OnRequestTerraform") :: Remote.ClientApi<(Vector3, number)>
+	local mouse = PlayerController.Player:GetMouse()
+	mouse.Button1Down:Connect(function()
+		remote:Fire(mouse.Hit.Position, 4)
+	end)
 end
 
 return PlayerController
