@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
+local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 --- Types ---
@@ -20,6 +21,8 @@ local OwnedBy = Jecs.tag()
 local Private = Jecs.tag()
 local Alive = Jecs.tag()
 
+local ChunkDebug = Jecs.tag()
+local ReplicateTo = Jecs.tag()
 local Dropped = Jecs.tag()
 local ResourceType = Jecs.tag()
 local Dirt = Jecs.tag()
@@ -44,7 +47,8 @@ local JecsCommon = {
 	NResourceTypes = #RESOURCE_TYPE_MAP,
 	World = World,
 	Components = {
-		-- Player Characters
+		-- Player
+		Player = World:component() :: Jecs.Id<Player>,
 		Character = World:component() :: Jecs.Id<UsableCharacter?>,
 
 		-- Climbing System
@@ -57,10 +61,7 @@ local JecsCommon = {
 		Gravity = World:component() :: Jecs.Id<VectorForce?>,
 
 		-- Resource Grid
-		Grid = World:component() :: Jecs.Id<{
-			Center: Vector3,
-			Size: Vector3,
-		}>,
+		Grid = World:component() :: Jecs.Id<Infinigrid.Grid<any>>,
 		ResourceChunk = World:component() :: Jecs.Id<ResourceChunkData>,
 		Resource = World:component() :: Jecs.Id<number>, -- number is the CFrame index.
 	},
@@ -76,6 +77,8 @@ local JecsCommon = {
 		Climbing = Climbing,
 
 		-- Resource Grid
+		ChunkDebug = ChunkDebug,
+		ReplicateTo = ReplicateTo,
 		Dropped = Dropped,
 		ResourceType = ResourceType,
 		Dirt = Dirt,

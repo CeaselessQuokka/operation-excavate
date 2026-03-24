@@ -61,9 +61,9 @@ do -- Service initialization.
 
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
-	for x = -100, 100 do
-		for y = -2, 1 do
-			for z = -100, 100 do
+	for x = -25, 25 do
+		for y = -1, 2 do
+			for z = -25, 25 do
 				table.insert(sortedOffsets, Vector3.new(x, y, z))
 			end
 		end
@@ -72,12 +72,21 @@ do -- Service initialization.
 	table.sort(sorted, function(a: Vector3, b: Vector3)
 		return a.Magnitude < b.Magnitude
 	end)
-	-- local sizeZ = planet.Grid.GridSize.Z
+	local sizeZ = planet.Grid.GridSize.Z
 	local function GenerateChunksAroundGridPosition(gridPosition: Vector3)
 		local nGenerated = 0
 		for _, offset in sorted do
 			local chunkIndex = planet:GridPositionToChunkIndex(gridPosition + offset)
 			local isAir, generated = planet:FastPeekChunk(chunkIndex)
+			if isAir then
+				for yOffset = 1, 5 do
+					chunkIndex -= sizeZ
+					isAir, generated = planet:FastPeekChunk(chunkIndex)
+					if not generated and not isAir then
+						break
+					end
+				end
+			end
 			if not generated and not isAir then
 				nGenerated += 1
 				PlanetResourceService.CreateChunk(chunkIndex)
@@ -149,7 +158,7 @@ do -- Service initialization.
 	end)
 	task.spawn(function()
 		while true do
-			task.wait(1 / 4)
+			task.wait(1 / 8)
 			local threads = 0
 			for player: Player, character: CharacterHelper.UsableR15Character in characters do
 				local lastPosition = lastPositions[player]
@@ -169,10 +178,11 @@ do -- Service initialization.
 					threads -= 1
 				end)
 			end
-			while threads > 0 do
-				task.wait(1 / 8)
-			end
-			print("DONE")
+			task.wait(1 / 8)
+			-- while threads > 0 do
+			-- 	task.wait(1 / 8)
+			-- end
+			-- print("DONE")
 		end
 	end)
 

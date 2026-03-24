@@ -26,7 +26,7 @@ local CharacterComponent = JecsCommon.Components.Character
 local GravityComponent = JecsCommon.Components.Gravity
 local AliveTag = JecsCommon.Tags.Alive
 
-local jecs = {} :: { [Player]: { Character: Jecs.Id, Gravity: Jecs.Id } }
+local jecs = {} :: { [Player]: { Player: Jecs.Id, Character: Jecs.Id, Gravity: Jecs.Id } }
 local characterAddedEvents = {} :: { [Player]: Signal<UsableCharacter, Player> }
 local diedEvents = {} :: { [Player]: Signal<> }
 
@@ -74,6 +74,11 @@ local PlayerService = {
 		CooldownPerFire = 5,
 	}) :: ServerApi<()>,
 }
+
+function PlayerService.GetPlayerEntity(player: Player): Jecs.Id?
+	local jecsData = jecs[player]
+	return if jecsData then jecsData.Player else nil
+end
 
 -- Loads the player's character if not already loaded, then returns it.
 function PlayerService.LoadCharacter(player: Player, timeout: number?, onlyLoadIfNeeded: boolean?): UsableCharacter?
@@ -168,9 +173,11 @@ do
 	PlayerService.PlayerAdded(function(player)
 		do -- Register with Jecs.
 			jecs[player] = {
+				Player = World:entity(),
 				Character = World:entity(),
 				Gravity = World:entity(),
 			}
+			World:set(jecs[player].Player, JecsCommon.Components.Player, player)
 		end
 
 		player.CharacterAdded:Connect(function(character)
@@ -188,6 +195,12 @@ do
 
 	Players.PlayerRemoving:Connect(function(player)
 		PlayerService.Characters[player] = nil
+		local jecsData = jecs[player]
+		jecs[player] = nil
+		World:delete(jecsData.Player)
+		World:delete(jecsData.Character)
+		World:delete(jecsData.Gravity)
+
 		local diedEvent = diedEvents[player]
 		diedEvents[player] = nil
 		if diedEvent then
@@ -199,11 +212,6 @@ do
 		if characterAddedEvent then
 			characterAddedEvent:Destroy()
 		end
-
-		local jecsData = jecs[player]
-		jecs[player] = nil
-		World:delete(jecsData.Character)
-		World:delete(jecsData.Gravity)
 	end)
 
 	PlayerService.OnResetRequested:Connect(function(player)

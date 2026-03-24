@@ -13,7 +13,7 @@
 			"--- Imports ---",
 			"local Jecs = require(ReplicatedStorage.Packages.Jecs)",
 			"",
-			"local SystemScheduler = require(script.Parent)",
+			"local SystemScheduler = require(ReplicatedStorage.Shared.Systems)",
 			"",
 			"local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)",
 			"",
