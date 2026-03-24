@@ -27,6 +27,8 @@ local Pair = Jecs.pair
 local ReplicateTo = JecsCommon.Tags.ReplicateTo
 local ResourceChunk = JecsCommon.Components.ResourceChunk
 
+local resourceId = 1
+
 --- Planet Resource Service ---
 local PlanetResourceService = {}
 
@@ -43,7 +45,8 @@ function PlanetResourceService.CreateChunk(chunkIndex: number)
 	World:add(chunk, Pair(ChildOf, PlanetResourceService.ResourceGrid))
 	local resources: { number } = table.create(512) :: any
 	for i = 1, 512 do
-		resources[i] = math.random(1, N_RESOURCE_TYPES)
+		resources[resourceId] = math.random(1, N_RESOURCE_TYPES)
+		resourceId += 1
 	end
 	World:set(chunk, ResourceChunk, { ChunkIndex = chunkIndex, Resources = resources })
 	local playerEntity = PlayerService.GetPlayerEntity(game.Players:FindFirstChild("CeaselessQuokka")) :: Jecs.Id

@@ -16,6 +16,7 @@ local CHUNK_SIZE = 64
 local Planet = {
 	ChunkSize = CHUNK_SIZE,
 	Terrain = PlanetGenerator.new(67, CHUNK_SIZE),
+	MaxResourceTypes = (2 ^ 14) - 1,
 }
 
 return table.freeze(Planet)
