@@ -13,11 +13,9 @@ function LoadingHelper.LoadModules(root: Instance, forceIn: boolean?)
 			return
 		end
 
-		task.spawn(function()
-			xpcall(require, function(err: string)
-				warn(`[{script.Name}] An error occurred while requiring module "{root.Name}": {debug.traceback(err)}`)
-			end, root)
-		end)
+		xpcall(require, function(err: string)
+			warn(`[{script.Name}] An error occurred while requiring module "{root.Name}": {debug.traceback(err)}`)
+		end, root)
 	else
 		for _, module in root:GetChildren() do
 			LoadingHelper.LoadModules(module)

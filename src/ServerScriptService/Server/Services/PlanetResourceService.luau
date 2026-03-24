@@ -40,7 +40,7 @@ function PlanetResourceService.Terraform(point: Vector3, radius: number) end
 -- TODO: need a general way to track frontiers (one for terrain, one for resources, and one for chunk debugging)
 function PlanetResourceService.CreateChunk(chunkIndex: number)
 	local chunk = World:entity()
-	World:add(chunk, Pair(ChildOf, PlanetResourceService.Grid))
+	World:add(chunk, Pair(ChildOf, PlanetResourceService.ResourceGrid))
 	local resources: { number } = table.create(512) :: any
 	for i = 1, 512 do
 		resources[i] = math.random(1, N_RESOURCE_TYPES)
@@ -55,7 +55,7 @@ do -- Service initialization.
 	local grid = World:entity()
 	local planetTerrain = Planet.Terrain
 	World:set(grid, JecsCommon.Components.Grid, planetTerrain.Grid)
-	PlanetResourceService.Grid = grid
+	PlanetResourceService.ResourceGrid = grid
 end
 
 return PlanetResourceService

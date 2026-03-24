@@ -3,7 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
+local Grid = require(ReplicatedStorage.Shared.Common.Classes.Grid)
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 local SystemScheduler = require(ReplicatedStorage.Shared.Systems)
@@ -44,7 +44,7 @@ selectionBox.Parent = boxTemplate
 World:added(ChunkDebug, function(chunkEntity: Jecs.Id)
 	local chunk = World:get(chunkEntity, ResourceChunk) :: ResourceChunkData
 	local gridEntity = World:target(chunkEntity, ChildOf) :: Jecs.Id
-	local grid = World:get(gridEntity, Grid) :: Infinigrid.Grid<any>
+	local grid = World:get(gridEntity, Grid) :: Grid.Grid<any>
 	local gridPosition = grid:ChunkIndexToGridPosition(chunk.ChunkIndex)
 	local worldPosition = grid:GridPositionToWorldPosition(gridPosition)
 	local box = boxTemplate:Clone()

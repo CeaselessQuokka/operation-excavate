@@ -4,7 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
 local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
-local Infinigrid = require(ReplicatedStorage.Shared.Common.Classes.Infinigrid)
+local Grid = require(ReplicatedStorage.Shared.Common.Classes.Grid)
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
 --- Types ---
@@ -61,7 +61,7 @@ local JecsCommon = {
 		Gravity = World:component() :: Jecs.Id<VectorForce?>,
 
 		-- Resource Grid
-		Grid = World:component() :: Jecs.Id<Infinigrid.Grid<any>>,
+		Grid = World:component() :: Jecs.Id<Grid.Grid<any>>,
 		ResourceChunk = World:component() :: Jecs.Id<ResourceChunkData>,
 		Resource = World:component() :: Jecs.Id<number>, -- number is the CFrame index.
 	},

@@ -19,7 +19,7 @@
 
 --- Imports ---
 local Biomes = require(script.Parent.Biomes)
-local Infinigrid = require(script.Parent.Parent.Infinigrid)
+local Grid = require(script.Parent.Parent.Grid)
 local NoiseGenerator = require(script.Parent.NoiseGenerator)
 
 --- Types ---
@@ -537,7 +537,7 @@ PlanetGenerator.__index = PlanetGenerator
 export type PlanetGenerator = typeof(setmetatable(
 	{} :: {
 		MasterSeed: number,
-		Grid: Infinigrid.Grid<any>, -- Internal Infinigrid instance for all grid/index/position math.
+		Grid: Grid.Grid<any>, -- Internal Infinigrid instance for all grid/index/position math.
 		Radius: number, -- The base radius constant (terrain can extend beyond this).
 		SeaLevel: number,
 		MaxSurfaceRadius: number, -- Actual maximum distance from center to any terrain surface point. Use this as the true bounding radius.
@@ -638,7 +638,7 @@ function PlanetGenerator.new(masterSeed: number, chunkSize: number, quiet: boole
 	local gridWorldSize = Vector3.one * worldSpaceSize
 
 	-- Create an Infinigrid instance for all grid/index/position math.
-	local grid = Infinigrid.new(center, gridWorldSize, alignedChunkSize)
+	local grid = Grid.new(center, gridWorldSize, alignedChunkSize)
 
 	-- Cache sizeYZ and sizeZ from the grid for hot-path performance in _ComputeChunkData/PeekChunk.
 	local cachedSizeYZ = grid.GridSize.Y * grid.GridSize.Z
@@ -1089,14 +1089,17 @@ end
 function PlanetGenerator.FastPeekChunk(self: PlanetGenerator, chunkIndex: number): (boolean, boolean)
 	-- Returns (isAir, generated). Lightweight alternative to PeekChunk that avoids
 	-- table allocations and limits surface lookups to a single sample.
+	local generated = self._generated[chunkIndex] == true
+	if generated then
+		return false, true
+	end
+
 	local sizeYZ = self._sizeYZ
 	local sizeZ = self._sizeZ
 	local remainder = chunkIndex % sizeYZ
 	local gx = chunkIndex // sizeYZ
 	local gy = remainder // sizeZ
 	local gz = remainder % sizeZ
-
-	local generated = self._generated[chunkIndex] == true
 
 	local halfWorld = self.Grid.GridWorldSize.X / 2
 	local cs = self.Grid.ChunkSize

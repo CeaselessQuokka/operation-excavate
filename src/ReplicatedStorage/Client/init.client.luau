@@ -6,7 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 --- Imports ---
--- local Jabby = require(ReplicatedStorage.Packages.Jabby)
+local Jabby = require(ReplicatedStorage.Packages.Jabby)
 
 local TableEditor = require(ReplicatedStorage.Shared.TableEditor) -- Keep for debugging purposes; needed to hook up client connections.
 
@@ -38,18 +38,18 @@ while true do
 end
 
 -- Setup Jabby.
--- local client = Jabby.obtain_client()
--- local function create_widget(_, state: Enum.UserInputState)
--- 	if state == Enum.UserInputState.Begin then
--- 		client.spawn_app(client.apps.home, nil)
--- 	end
--- end
--- ContextActionService:BindAction("JecsDebugger", create_widget, false, Enum.KeyCode.F4)
+local client = Jabby.obtain_client()
+local function create_widget(_, state: Enum.UserInputState)
+	if state == Enum.UserInputState.Begin then
+		client.spawn_app(client.apps.home, nil)
+	end
+end
+ContextActionService:BindAction("JecsDebugger", create_widget, false, Enum.KeyCode.F4)
 
--- Jabby.register({
--- 	applet = Jabby.applets.world,
--- 	name = "Client",
--- 	configuration = {
--- 		world = JecsCommon.World,
--- 	},
--- })
+Jabby.register({
+	applet = Jabby.applets.world,
+	name = "Client World",
+	configuration = {
+		world = JecsCommon.World,
+	},
+})

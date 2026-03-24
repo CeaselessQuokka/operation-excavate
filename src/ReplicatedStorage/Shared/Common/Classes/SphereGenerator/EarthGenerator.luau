@@ -24,7 +24,7 @@
 --- Imports ---
 local Biomes = require(script.Parent.Biomes)
 local EarthData = require(script.Parent.EarthData)
-local Infinigrid = require(script.Parent.Parent.Infinigrid)
+local Grid = require(script.Parent.Parent.Grid)
 
 --- Types ---
 type Biome = Biomes.Biome
@@ -651,7 +651,7 @@ EarthGenerator.__index = EarthGenerator
 
 export type EarthGenerator = typeof(setmetatable(
 	{} :: {
-		Grid: Infinigrid.Grid<any>,
+		Grid: Grid.Grid<any>,
 		Radius: number,
 		SeaLevel: number,
 		VerticalExaggeration: number,
@@ -870,7 +870,7 @@ function EarthGenerator.new(
 	local rawWorldSize = math.ceil(maxExtent / 8) * 8 * 2
 	local worldSpaceSize = math.ceil(rawWorldSize / 8) * 8
 
-	local grid = Infinigrid.new(Vector3.zero, Vector3.one * worldSpaceSize, alignedChunkSize)
+	local grid = Grid.new(Vector3.zero, Vector3.one * worldSpaceSize, alignedChunkSize)
 
 	local cachedSizeYZ = grid.GridSize.Y * grid.GridSize.Z
 	local cachedSizeZ = grid.GridSize.Z

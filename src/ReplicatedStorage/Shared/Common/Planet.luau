@@ -8,12 +8,14 @@ local PlanetGenerator = require(ReplicatedStorage.Shared.Common.Classes.SphereGe
 --- Types ---
 
 --- Variables ---
+local CHUNK_SIZE = 64
 
 --- Functions ---
 
 --- Planet Common ---
 local Planet = {
-	Terrain = PlanetGenerator.new(67, 64),
+	ChunkSize = CHUNK_SIZE,
+	Terrain = PlanetGenerator.new(67, CHUNK_SIZE),
 }
 
 return table.freeze(Planet)

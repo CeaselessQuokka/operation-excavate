@@ -1215,7 +1215,7 @@ function CameraHelper.SetupFreecamKeybind(options: FreecamOptions?): () -> ()
 		if gameProcessed then
 			return
 		end
-		if input.KeyCode == keybind then
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and input.KeyCode == keybind then
 			CameraHelper.ToggleFreecam()
 		end
 	end)

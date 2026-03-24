@@ -1,3 +1,5 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Planet = require(ReplicatedStorage.Shared.Common.Planet)
 --[[
 	Earth terrain generator test script for Studio.
 	Clone-require this module from the command bar:
@@ -24,7 +26,7 @@ end
 local RADIUS = 4096
 
 -- How many studs each chunk spans per axis (aligned to 8-stud multiples).
-local CHUNK_SIZE = 64
+local CHUNK_SIZE = Planet.ChunkSize
 
 -- Multiplier for terrain height differences (mountains, trenches).
 -- 1.0 = proportional to real Earth (features are sub-voxel and invisible).
