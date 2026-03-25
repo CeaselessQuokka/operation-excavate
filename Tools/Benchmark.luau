@@ -39,6 +39,8 @@ export type BenchResult = {
 
 export type BenchOptions = {
 	Name: string?,
+	TimeBetweenIterations: number?,
+	TimeBetweenRuns: number?,
 	TrackMemory: boolean?,
 	Warmup: number?, -- Warmup iterations before measurement (default: 0)
 	TimeUnit: ("s" | "ms" | "us" | "ns")?,
@@ -581,6 +583,9 @@ function Benchmark.Bench(
 	local runTimes: { number } = table.create(runCount)
 	local writeIdx = 0
 
+	local timeBetweenIterations = if options then options.TimeBetweenIterations else nil
+	local timeBetweenRuns = if options then options.TimeBetweenRuns else nil
+
 	local memBefore: number? = if trackMemory then GetMemoryUsage() else nil
 
 	for run = 1, runCount do
@@ -592,8 +597,14 @@ function Benchmark.Bench(
 			writeIdx += 1
 			allTimes[writeIdx] = elapsed
 			runTotal += elapsed
+			if timeBetweenIterations then
+				task.wait(timeBetweenIterations)
+			end
 		end
 		runTimes[run] = runTotal
+		if timeBetweenRuns then
+			task.wait(timeBetweenRuns)
+		end
 	end
 
 	local memDelta: number? = if trackMemory and memBefore then GetMemoryUsage() - memBefore else nil

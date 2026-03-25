@@ -3,16 +3,15 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
-local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
-local Grid = require(ReplicatedStorage.Shared.Common.Classes.Grid)
 local Jecs = require(ReplicatedStorage.Packages.Jecs)
 
---- Types ---
-export type ResourceChunkData = {
-	ChunkIndex: number,
-	Resources: { number }, -- Array of resource IDs.
-}
+local CharacterHelper = require(ReplicatedStorage.Shared.Helpers.CharacterHelper)
 
+local Grid = require(ReplicatedStorage.Shared.Common.Classes.Grid)
+local Planet = require(ReplicatedStorage.Shared.Common.Planet)
+
+--- Types ---
+type ResourceChunkData = Planet.ResourceChunkData
 type UsableCharacter = CharacterHelper.UsableCharacter
 
 --- Variables ---
@@ -24,27 +23,11 @@ local Alive = Jecs.tag()
 local ChunkDebug = Jecs.tag()
 local ReplicateTo = Jecs.tag()
 local Dropped = Jecs.tag()
-local ResourceType = Jecs.tag()
-local Dirt = Jecs.tag()
-local Stone = Jecs.tag()
-local Bauxite = Jecs.tag()
-local Coal = Jecs.tag()
 
 local World = Jecs.world(true)
 
---- Variables ---
-local RESOURCE_TYPE_MAP = {
-	-- Note: the index of the element is the ID.
-	Dirt,
-	Stone,
-	Bauxite,
-	Coal,
-}
-
 --- Jecs Common ---
 local JecsCommon = {
-	ResourceTypeMap = RESOURCE_TYPE_MAP,
-	NResourceTypes = #RESOURCE_TYPE_MAP,
 	World = World,
 	Components = {
 		-- Player
@@ -61,7 +44,7 @@ local JecsCommon = {
 		Gravity = World:component() :: Jecs.Id<VectorForce?>,
 
 		-- Resource Grid
-		Grid = World:component() :: Jecs.Id<Grid.Grid<any>>,
+		Grid = World:component() :: Jecs.Id<Grid.Grid>,
 		ResourceChunk = World:component() :: Jecs.Id<ResourceChunkData>,
 		Resource = World:component() :: Jecs.Id<number>, -- number is the CFrame index.
 	},

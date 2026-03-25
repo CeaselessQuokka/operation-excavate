@@ -16,6 +16,7 @@
 
 --!native
 --!strict
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --- Imports ---
 local Biomes = require(script.Parent.Biomes)
@@ -52,7 +53,7 @@ local RESOLUTION = 4
 local INV_RESOLUTION = 1 / RESOLUTION
 local DEEP_STRIDE = 4
 
-local RADIUS = 16384
+local RADIUS = 16_384
 local SEA_LEVEL_OFFSET = 0
 local MAX_HEIGHT_VARIATION = 512
 local SEA_LEVEL = RADIUS + SEA_LEVEL_OFFSET

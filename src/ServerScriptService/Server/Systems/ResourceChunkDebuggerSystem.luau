@@ -10,16 +10,17 @@ local SystemScheduler = require(ReplicatedStorage.Shared.Systems)
 
 local DiagnosticHelper = require(ReplicatedStorage.Shared.Helpers.DiagnosticHelper)
 local JecsCommon = require(ReplicatedStorage.Shared.Common.JecsCommon)
+local Planet = require(ReplicatedStorage.Shared.Common.Planet)
 
 --- Types ---
-type ResourceChunkData = JecsCommon.ResourceChunkData
+type ResourceChunkData = Planet.ResourceChunkData
 
 --- Variables ---
 local World = JecsCommon.World
 local ChildOf = Jecs.ChildOf
 local Pair = Jecs.pair
 
-local Grid = JecsCommon.Components.Grid
+local GridComponent = JecsCommon.Components.Grid
 local ResourceChunk = JecsCommon.Components.ResourceChunk
 
 local ChunkDebug = JecsCommon.Tags.ChunkDebug
@@ -44,7 +45,7 @@ selectionBox.Parent = boxTemplate
 World:added(ChunkDebug, function(chunkEntity: Jecs.Id)
 	local chunk = World:get(chunkEntity, ResourceChunk) :: ResourceChunkData
 	local gridEntity = World:target(chunkEntity, ChildOf) :: Jecs.Id
-	local grid = World:get(gridEntity, Grid) :: Grid.Grid<any>
+	local grid = World:get(gridEntity, GridComponent) :: Grid.Grid
 	local gridPosition = grid:ChunkIndexToGridPosition(chunk.ChunkIndex)
 	local worldPosition = grid:GridPositionToWorldPosition(gridPosition)
 	local box = boxTemplate:Clone()
