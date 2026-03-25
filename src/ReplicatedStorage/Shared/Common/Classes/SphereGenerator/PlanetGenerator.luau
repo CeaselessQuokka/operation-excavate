@@ -538,7 +538,7 @@ PlanetGenerator.__index = PlanetGenerator
 export type PlanetGenerator = typeof(setmetatable(
 	{} :: {
 		MasterSeed: number,
-		Grid: Grid.Grid<any>, -- Internal Infinigrid instance for all grid/index/position math.
+		Grid: Grid.Grid, -- Internal Infinigrid instance for all grid/index/position math.
 		Radius: number, -- The base radius constant (terrain can extend beyond this).
 		SeaLevel: number,
 		MaxSurfaceRadius: number, -- Actual maximum distance from center to any terrain surface point. Use this as the true bounding radius.

@@ -29,8 +29,9 @@ end
 
 -- TODO: need to support shapes like box, ball, cone (drills), etc
 function PlanetTerrainService.Terraform(point: Vector3, radius: number)
+	radius = math.ceil(radius / 4) * 4
 	Workspace.Terrain:FillBall(point, radius, Enum.Material.Air)
-	PlanetResourceService.Terraform(point, radius)
+	task.delay(0, PlanetResourceService.Terraform, point, radius)
 end
 
 do -- Service initialization.
@@ -61,9 +62,9 @@ do -- Service initialization.
 
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
-	for x = -25, 25 do
+	for x = -8, 8 do
 		for y = -1, 2 do
-			for z = -25, 25 do
+			for z = -8, 8 do
 				table.insert(sortedOffsets, Vector3.new(x, y, z))
 			end
 		end
