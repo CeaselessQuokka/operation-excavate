@@ -57,9 +57,9 @@ do -- Service initialization.
 
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
-	for x = -25, 25 do
-		for y = -2, 2 do
-			for z = -25, 25 do
+	for x = -8, 8 do
+		for y = -1, 1 do
+			for z = -8, 8 do
 				table.insert(sortedOffsets, Vector3.new(x, y, z))
 			end
 		end

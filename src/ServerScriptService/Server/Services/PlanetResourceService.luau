@@ -97,10 +97,9 @@ local function ShouldRemoveResource(offsetId: number, chunkCenter: Vector3): boo
 	return false
 end
 
+local exposedResourceModels: { [ResourceId]: Model } = {}
 -- Initially identity all exposed resources, and discard ones that are droppable.
-local diag = DiagnosticHelper.new("Chunk")
 local function ProcessChunk(chunkData: ResourceChunkData)
-	diag:StartTimer("ProcessChunk")
 	local resources = chunkData.Resources
 	local exposedResources = chunkData.ExposedResources
 	local chunkCenter = resourceGrid:ChunkIndexToWorldPosition(chunkData.ChunkIndex)
@@ -108,19 +107,15 @@ local function ProcessChunk(chunkData: ResourceChunkData)
 		local typeId = bit32.rshift(resourceId, RESOURCE_OFFSET_BITS)
 		local offsetId = bit32.band(resourceId, MAX_RESOURCE_OFFSETS)
 		if IsResourceExposed(typeId, offsetId, chunkCenter) then
-			diag:Increment("Exposed")
 			exposedResources[resourceId] = true
-			-- local prefab = Planet.ResourceTypeToPrefab[Planet.ResourceIdToType[typeId]]:Clone()
-			-- prefab:PivotTo(ResourceOffsets[offsetId] + chunkCenter)
-			-- prefab.Parent = workspace
+			local prefab = Planet.ResourceTypeToPrefab[Planet.ResourceIdToType[typeId]]:Clone()
+			prefab:PivotTo(ResourceOffsets[offsetId] + chunkCenter)
+			prefab.Parent = workspace
+			exposedResourceModels[resourceId] = prefab
 		elseif ShouldRemoveResource(offsetId, chunkCenter) then
-			diag:Increment("Removed")
 			resources[resourceId] = nil
-		else
-			diag:Increment("Embedded")
 		end
 	end
-	diag:StopTimer("ProcessChunk")
 end
 
 --- Planet Resource Service ---
@@ -141,14 +136,36 @@ function PlanetResourceService.Terraform(point: Vector3, radius: number)
 			local typeId = bit32.rshift(resourceId, RESOURCE_OFFSET_BITS)
 			local offsetId = bit32.band(resourceId, MAX_RESOURCE_OFFSETS)
 			local isExposed = IsResourceExposed(typeId, offsetId, chunkCenter)
+			local model = exposedResourceModels[resourceId]
+			print(model, isExposed)
 			if isExposed and not chunkData.ExposedResources[resourceId] then
 				-- Item is embedded and exposed to the air.
 				chunkData.ExposedResources[resourceId] = true
+				local prefab = Planet.ResourceTypeToPrefab[Planet.ResourceIdToType[typeId]]:Clone()
+				prefab:PivotTo(ResourceOffsets[offsetId] + chunkCenter)
+				prefab.Parent = workspace
+				exposedResourceModels[resourceId] = prefab
 			elseif not isExposed and chunkData.ExposedResources[resourceId] then
 				-- Can drop the resource since it was previously embedded in terrain,
 				-- but now it was dug out since no terrain is surrounded it.
 				chunkData.Resources[resourceId] = nil
 				chunkData.ExposedResources[resourceId] = nil
+				print("whats goin on", model)
+				if model then
+					local gaveGravity = false
+					for _, part in model:QueryDescendants("BasePart") do
+						if not gaveGravity then
+							gaveGravity = true
+							local movementAttachment: Attachment = (ServerStorage :: any).Assets.Character.MovementAttachment:Clone()
+							local gravityForce: VectorForce = (ServerStorage :: any).Assets.Character.Gravity:Clone()
+							movementAttachment.Parent = part
+							gravityForce.Attachment0 = movementAttachment
+							gravityForce.Parent = part
+							JecsCommon.World:set(JecsCommon.World:entity(), JecsCommon.Components.Gravity, gravityForce)
+						end
+						part.Anchored = false
+					end
+				end
 			end
 		end
 	end
@@ -164,10 +181,8 @@ function PlanetResourceService.CreateChunk(chunkIndex: number)
 		resources[resourceId] = true
 	end
 	local chunkData = { ChunkIndex = chunkIndex, Resources = resources, ExposedResources = {} }
-	task.delay(math.random(10) + 20, ProcessChunk, chunkData)
+	resourceChunks[chunkIndex] = chunkData
+	task.delay(math.random() + 1, ProcessChunk, chunkData)
 end
-task.delay(40, function()
-	diag:PrintBreakdown(true)
-end)
 
 return PlanetResourceService
