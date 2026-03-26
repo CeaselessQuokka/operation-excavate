@@ -57,9 +57,9 @@ do -- Service initialization.
 
 	local planet = Planet.Terrain
 	local sortedOffsets: { Vector3 } = {}
-	for x = -8, 8 do
-		for y = -1, 2 do
-			for z = -8, 8 do
+	for x = -25, 25 do
+		for y = -2, 2 do
+			for z = -25, 25 do
 				table.insert(sortedOffsets, Vector3.new(x, y, z))
 			end
 		end
@@ -79,21 +79,21 @@ do -- Service initialization.
 				continue
 			end
 
-			if isAir then
-				for yOffset = 1, 3 do
-					chunkIndex -= sizeZ
-					isAir, generated = planet:FastPeekChunk(chunkIndex)
-					if not generated and not isAir then
-						break
-					end
-				end
-			end
+			-- if isAir then
+			-- 	for yOffset = 1, 3 do
+			-- 		chunkIndex -= sizeZ
+			-- 		isAir, generated = planet:FastPeekChunk(chunkIndex)
+			-- 		if not generated and not isAir then
+			-- 			break
+			-- 		end
+			-- 	end
+			-- end
 			if not generated and not isAir then
 				nGenerated += 1
 				PlanetResourceService.CreateChunk(chunkIndex)
 				planet:GenerateChunk(chunkIndex)
 			end
-			if nGenerated % 16 == 0 then
+			if nGenerated % 32 == 0 then
 				task.wait()
 			end
 		end

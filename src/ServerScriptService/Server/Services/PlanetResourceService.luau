@@ -26,6 +26,10 @@ type SignalConnection = { Disconnect: (any) -> () }
 type ServerApi<Params..., Return...> = Remote.ServerApi<Params..., Return...>
 
 --- Variables ---
+local Y_X_MASK = Vector3.new(0, 1, 1)
+local X_Z_MASK = Vector3.new(1, 0, 1)
+local X_Y_MASK = Vector3.new(1, 1, 0)
+
 local N_OFFSETS = #ResourceOffsets
 local RESOURCE_OFFSET_BITS = Planet.ResourceOffsetBits
 local MAX_RESOURCE_OFFSETS = Planet.MaxResourceOffsets
@@ -41,72 +45,60 @@ local resourceGrid = Planet.Terrain.Grid
 local resourceChunks: { [ChunkIndex]: ResourceChunkData } = {}
 
 --- Functions ---
-local diag = DiagnosticHelper.new("Chunk")
--- local function IsResourceExposed(typeId: number, offsetId: number, chunkCenter: Vector3): boolean
--- 	diag:StartTimer("IsResourceExposed")
--- 	local worldCFrame = ResourceOffsets[offsetId] + chunkCenter
--- 	local worldSize = RESOURCE_TYPE_TO_SIZE[typeId] / 2
--- 	local topLeftFrontCorner = (worldCFrame * CFrame.new(-worldSize.X, worldSize.Y, -worldSize.Z)).Position
--- 	local bottomRightBackCorner = (worldCFrame * CFrame.new(worldSize.X, -worldSize.Y, worldSize.Z)).Position
--- 	if DebugHelper.Raycast(topLeftFrontCorner, bottomRightBackCorner - topLeftFrontCorner, TERRAIN_PARAMS) then
--- 		local box = DebugHelper.Box(worldCFrame, worldSize * 2, { Color = Color3.new(0, 1, 0) })
--- 		diag:StopTimer("IsResourceExposed")
--- 		return true
--- 	else
--- 		local topRightFrontCorner = (worldCFrame * CFrame.new(worldSize.X, worldSize.Y, -worldSize.Z)).Position
--- 		local bottomLeftBackCorner = (worldCFrame * CFrame.new(-worldSize.X, -worldSize.Y, worldSize.Z)).Position
--- 		local isExposed = DebugHelper.Raycast(
--- 			topRightFrontCorner,
--- 			bottomLeftBackCorner - topRightFrontCorner,
--- 			TERRAIN_PARAMS
--- 		) ~= nil
--- 		diag:StopTimer("IsResourceExposed")
--- 		local box = DebugHelper.Box(
--- 			worldCFrame,
--- 			worldSize * 2,
--- 			{ Color = if isExposed then Color3.new(0, 1, 0) else Color3.new(1, 0, 0) }
--- 		)
--- 		return isExposed
--- 	end
--- end
-local CAST_VECTORS = {
-	(Vector3.one - Vector3.xAxis), --- TODO: do for each plane and then check all planes; need to heavily optimize this
-	-- I may even need to do each cast in its own frame and have a solid locking mechanism, probably shouldn't even say the chunk data exists until it is fully processed
-}
 local function IsResourceExposed(typeId: number, offsetId: number, chunkCenter: Vector3): boolean
-	local worldCFrame = ResourceOffsets[offsetId] + chunkCenter
-	local worldSize = RESOURCE_TYPE_TO_SIZE[typeId]
-	local halfWorldSize = worldSize / 2
-	local left = worldCFrame * CFrame.new(-halfWorldSize.X, 0, 0)
-	DebugHelper.Box(worldCFrame, worldSize)
-	if
-		DebugHelper.Blockcast(left, worldSize * (Vector3.one - Vector3.xAxis), worldCFrame.RightVector * worldSize.X)
-	then
+	local origin = ResourceOffsets[offsetId] + chunkCenter
+	local size = RESOURCE_TYPE_TO_SIZE[typeId]
+	local halfWorldSize = size / 2
+	local left = origin * CFrame.new(-halfWorldSize.X, 0, 0)
+	if Workspace:Blockcast(left, size * Y_X_MASK, origin.RightVector * size.X) then
+		-- Check left to right.
+		return true
+	end
+	local right = origin * CFrame.new(halfWorldSize.X, 0, 0)
+	if Workspace:Blockcast(right, size * Y_X_MASK, origin.RightVector * -size.X) then
+		-- Check right to left.
+		return true
+	end
+	local top = origin * CFrame.new(0, halfWorldSize.Y, 0)
+	if Workspace:Blockcast(top, size * X_Z_MASK, origin.UpVector * -size.Y) then
+		-- Check top to bottom.
+		return true
+	end
+	local bottom = origin * CFrame.new(0, -halfWorldSize.Y, 0)
+	if Workspace:Blockcast(bottom, size * X_Z_MASK, origin.UpVector * size.Y) then
+		-- Check bottom to top.
+		return true
+	end
+	local back = origin * CFrame.new(0, 0, halfWorldSize.Z)
+	if Workspace:Blockcast(back, size * X_Y_MASK, origin.LookVector * size.Z) then
+		-- Check back to front.
+		return true
+	end
+	local front = origin * CFrame.new(0, 0, -halfWorldSize.Z)
+	if Workspace:Blockcast(front, size * X_Y_MASK, origin.LookVector * -size.Z) then
+		-- Check front to back.
 		return true
 	end
 	return false
 end
 
--- TODO: properly validate IsResourceExposed and CanDropResource
 -- TODO: add each chunk to a multithreading queue, and in that actor it task.waits every 32 resources or so
 
-local function CanDropResource(offsetId: number, chunkCenter: Vector3): boolean
-	diag:StartTimer("CanDropResource")
+local function ShouldRemoveResource(offsetId: number, chunkCenter: Vector3): boolean
 	local from = ResourceOffsets[offsetId].Position + chunkCenter
 	local direction = from.Unit
-	local to = direction * -40000
+	local to = direction * -10000
 	local floorResult = Workspace:Raycast(from, to, TERRAIN_PARAMS)
 	if floorResult then
 		local newFrom = floorResult.Position
-		local canDrop = Workspace:Raycast(newFrom, direction * (newFrom - from).Magnitude, TERRAIN_PARAMS) == nil
-		diag:StopTimer("CanDropResource")
-		return canDrop
+		local shouldRemove = Workspace:Raycast(newFrom, direction * (newFrom - from).Magnitude, TERRAIN_PARAMS) == nil
+		return shouldRemove
 	end
-	diag:StopTimer("CanDropResource")
 	return false
 end
 
 -- Initially identity all exposed resources, and discard ones that are droppable.
+local diag = DiagnosticHelper.new("Chunk")
 local function ProcessChunk(chunkData: ResourceChunkData)
 	diag:StartTimer("ProcessChunk")
 	local resources = chunkData.Resources
@@ -115,18 +107,20 @@ local function ProcessChunk(chunkData: ResourceChunkData)
 	for resourceId in resources do
 		local typeId = bit32.rshift(resourceId, RESOURCE_OFFSET_BITS)
 		local offsetId = bit32.band(resourceId, MAX_RESOURCE_OFFSETS)
-		if CanDropResource(offsetId, chunkCenter) then
-			resources[resourceId] = nil
-		elseif IsResourceExposed(typeId, offsetId, chunkCenter) then
+		if IsResourceExposed(typeId, offsetId, chunkCenter) then
+			diag:Increment("Exposed")
 			exposedResources[resourceId] = true
-			local prefab = Planet.ResourceTypeToPrefab[Planet.ResourceIdToType[typeId]]:Clone()
-			prefab:PivotTo(ResourceOffsets[offsetId] + chunkCenter)
-			prefab.Parent = workspace
+			-- local prefab = Planet.ResourceTypeToPrefab[Planet.ResourceIdToType[typeId]]:Clone()
+			-- prefab:PivotTo(ResourceOffsets[offsetId] + chunkCenter)
+			-- prefab.Parent = workspace
+		elseif ShouldRemoveResource(offsetId, chunkCenter) then
+			diag:Increment("Removed")
+			resources[resourceId] = nil
+		else
+			diag:Increment("Embedded")
 		end
-		task.wait()
 	end
 	diag:StopTimer("ProcessChunk")
-	-- diag:PrintBreakdown(true)
 end
 
 --- Planet Resource Service ---
@@ -144,15 +138,17 @@ function PlanetResourceService.Terraform(point: Vector3, radius: number)
 	if chunkData then
 		local chunkCenter = resourceGrid:ChunkIndexToWorldPosition(chunkData.ChunkIndex)
 		for resourceId in chunkData.Resources do
+			local typeId = bit32.rshift(resourceId, RESOURCE_OFFSET_BITS)
 			local offsetId = bit32.band(resourceId, MAX_RESOURCE_OFFSETS)
-			if CanDropResource(offsetId, chunkCenter) then
+			local isExposed = IsResourceExposed(typeId, offsetId, chunkCenter)
+			if isExposed and not chunkData.ExposedResources[resourceId] then
+				-- Item is embedded and exposed to the air.
+				chunkData.ExposedResources[resourceId] = true
+			elseif not isExposed and chunkData.ExposedResources[resourceId] then
+				-- Can drop the resource since it was previously embedded in terrain,
+				-- but now it was dug out since no terrain is surrounded it.
 				chunkData.Resources[resourceId] = nil
 				chunkData.ExposedResources[resourceId] = nil
-			else
-				local typeId = bit32.rshift(resourceId, RESOURCE_OFFSET_BITS)
-				if not chunkData.ExposedResources[resourceId] and IsResourceExposed(typeId, offsetId, chunkCenter) then
-					chunkData.ExposedResources[resourceId] = true
-				end
 			end
 		end
 	end
@@ -161,14 +157,17 @@ end
 -- TODO: need a general way to track frontiers (one for terrain, one for resources, and one for chunk debugging)
 function PlanetResourceService.CreateChunk(chunkIndex: number)
 	local resources: { [ResourceId]: true } = table.create(64) :: any
-	for i = 1, 16 do
+	for i = 1, 64 do
 		local typeId = math.random(1, N_RESOURCE_TYPES)
 		local offsetId = math.random(1, N_OFFSETS)
 		local resourceId = bit32.bor(bit32.lshift(typeId, RESOURCE_OFFSET_BITS), offsetId)
 		resources[resourceId] = true
 	end
 	local chunkData = { ChunkIndex = chunkIndex, Resources = resources, ExposedResources = {} }
-	task.delay(math.random() + 1, ProcessChunk, chunkData)
+	task.delay(math.random(10) + 20, ProcessChunk, chunkData)
 end
+task.delay(40, function()
+	diag:PrintBreakdown(true)
+end)
 
 return PlanetResourceService
