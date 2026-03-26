@@ -330,6 +330,7 @@ local SCREEN_GUI_NAME = "DebugScreenGui"
 local DEFAULT_COLOR: Color3 = Color3.fromRGB(255, 0, 255)
 local EPSILON = 0.001
 local HALF_PI = math.pi / 2
+local MAX_PART_SIZE = 2048
 
 local BOX_EDGE_INDICES = table.freeze({ 1, 2, 1, 3, 1, 5, 2, 4, 2, 6, 3, 4, 3, 7, 4, 8, 5, 6, 5, 7, 6, 8, 7, 8 })
 
@@ -782,7 +783,21 @@ end
 local function SetMeshScale(part: BasePart, scale: Vector3)
 	local mesh = part:FindFirstChild("Mesh")
 	if mesh then
-		(mesh :: any).Scale = scale
+		if mesh:IsA("BlockMesh") then
+			local partSize = Vector3.new(
+				math.min(scale.X, MAX_PART_SIZE),
+				math.min(scale.Y, MAX_PART_SIZE),
+				math.min(scale.Z, MAX_PART_SIZE)
+			)
+			part.Size = partSize;
+			(mesh :: BlockMesh).Scale = Vector3.new(
+				if partSize.X > 0 then scale.X / partSize.X else 1,
+				if partSize.Y > 0 then scale.Y / partSize.Y else 1,
+				if partSize.Z > 0 then scale.Z / partSize.Z else 1
+			)
+		else
+			(mesh :: any).Scale = scale
+		end
 	end
 end
 
@@ -801,8 +816,8 @@ local function CreateEdge(
 	local part = MakeDebugPart()
 	local mesh = Instance.new("BlockMesh")
 	mesh.Name = "Mesh"
-	mesh.Scale = Vector3.new(thickness, thickness, distance)
 	mesh.Parent = part
+	SetMeshScale(part, Vector3.new(thickness, thickness, distance))
 	part.CFrame = SafeLookAt((from + to) / 2, to)
 	part.Color = color
 	part.Transparency = transparency
@@ -1907,14 +1922,15 @@ function DebugHelper.Spherecast(
 		startSphere.Name = "Start"
 		startSphere.Parent = folder
 		if result then
+			local endCenter = position + direction.Unit * result.Distance
 			local endSphere = MakeSpherePart()
-			endSphere.CFrame = CFrame.new(result.Position)
+			endSphere.CFrame = CFrame.new(endCenter)
 			endSphere.Color = opts.HitColor
 			endSphere.Transparency = 0.5
 			SetMeshScale(endSphere, Vector3.new(diameter, diameter, diameter))
 			endSphere.Name = "End"
 			endSphere.Parent = folder
-			CreateLineParts(position, result.Position, opts.Thickness, opts.HitColor, 0, true, 0.3, folder)
+			CreateLineParts(position, endCenter, opts.Thickness, opts.HitColor, 0, true, 0.3, folder)
 		else
 			local endPos = position + direction
 			local endSphere = MakeSpherePart()
@@ -1952,7 +1968,8 @@ function DebugHelper.Blockcast(
 		startBox.Name = "Start"
 		startBox.Parent = folder
 		if result then
-			local endCFrame = CFrame.new(result.Position) * cframe.Rotation
+			local endCenter = cframe.Position + direction.Unit * result.Distance
+			local endCFrame = CFrame.new(endCenter) * cframe.Rotation
 			local endBox = MakeBlockPart()
 			endBox.CFrame = endCFrame
 			endBox.Color = opts.HitColor
@@ -1960,7 +1977,7 @@ function DebugHelper.Blockcast(
 			SetMeshScale(endBox, size)
 			endBox.Name = "End"
 			endBox.Parent = folder
-			CreateLineParts(cframe.Position, result.Position, opts.Thickness, opts.HitColor, 0, true, 0.3, folder)
+			CreateLineParts(cframe.Position, endCenter, opts.Thickness, opts.HitColor, 0, true, 0.3, folder)
 		else
 			local endPos = cframe.Position + direction
 			local endBox = MakeBlockPart()
@@ -1971,6 +1988,68 @@ function DebugHelper.Blockcast(
 			endBox.Name = "End"
 			endBox.Parent = folder
 			CreateLineParts(cframe.Position, endPos, opts.Thickness, opts.MissColor, 0, true, 0.3, folder)
+		end
+		folder.Parent = GetOrCreateDebugFolder()
+		ApplyDuration(folder, opts.Duration)
+	end
+	return result
+end
+
+function DebugHelper.Shapecast(
+	part: BasePart,
+	direction: Vector3,
+	raycastParams: RaycastParams?,
+	options: (Options & Partial<RaycastVisualOptions>)?
+): RaycastResult?
+	local result = Workspace:Shapecast(part, direction, raycastParams)
+	if _enabled then
+		local opts = ReconcileOptions(options, DEFAULT_RAYCAST_VISUAL) :: Options & RaycastVisualOptions
+		local folder = Instance.new("Folder")
+		folder.Name = opts.Name
+		local size = part.Size
+		local startCFrame = part.CFrame
+
+		local startBox = MakeBlockPart()
+		startBox.CFrame = startCFrame
+		startBox.Color = Color3.fromRGB(100, 100, 100)
+		startBox.Transparency = 0.7
+		SetMeshScale(startBox, size)
+		startBox.Name = "Start"
+		startBox.Parent = folder
+
+		if result then
+			local endCenter = startCFrame.Position + direction.Unit * result.Distance
+			local endCFrame = CFrame.new(endCenter) * startCFrame.Rotation
+			local endBox = MakeBlockPart()
+			endBox.CFrame = endCFrame
+			endBox.Color = opts.HitColor
+			endBox.Transparency = 0.5
+			SetMeshScale(endBox, size)
+			endBox.Name = "End"
+			endBox.Parent = folder
+			CreateLineParts(startCFrame.Position, endCenter, opts.Thickness, opts.HitColor, 0, true, 0.3, folder)
+			if opts.ShowNormal then
+				CreateLineParts(
+					result.Position,
+					result.Position + result.Normal * 2,
+					opts.Thickness * 0.5,
+					opts.NormalColor,
+					0,
+					true,
+					0.2,
+					folder
+				)
+			end
+		else
+			local endPos = startCFrame.Position + direction
+			local endBox = MakeBlockPart()
+			endBox.CFrame = CFrame.new(endPos) * startCFrame.Rotation
+			endBox.Color = opts.MissColor
+			endBox.Transparency = 0.7
+			SetMeshScale(endBox, size)
+			endBox.Name = "End"
+			endBox.Parent = folder
+			CreateLineParts(startCFrame.Position, endPos, opts.Thickness, opts.MissColor, 0, true, 0.3, folder)
 		end
 		folder.Parent = GetOrCreateDebugFolder()
 		ApplyDuration(folder, opts.Duration)

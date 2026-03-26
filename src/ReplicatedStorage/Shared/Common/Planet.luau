@@ -14,7 +14,7 @@ export type ResourceType = string
 export type ResourceChunkData = {
 	ChunkIndex: number,
 	Resources: { [ResourceId]: true }, -- Array of resource IDs.
-	ExposedResources: { [ResourceId]: true }?, -- Resources that are exposed in the chunk.
+	ExposedResources: { [ResourceId]: true }, -- Resources that are exposed in the chunk.
 }
 
 --- Variables ---
@@ -44,7 +44,6 @@ local Planet = {
 	ChunkSize = CHUNK_SIZE,
 	Terrain = PlanetGenerator.new(67, CHUNK_SIZE, true),
 	ResourceOffsetBits = RESOURCE_OFFSET_BITS,
-	MaxResourceTypes = (2 ^ 14) - 1,
 	MaxResourceOffsets = (2 ^ RESOURCE_OFFSET_BITS) - 1,
 	ResourceTypeToPrefab = RESOURCE_TYPE_TO_PREFAB,
 	ResourceTypeToId = RESOURCE_TYPE_TO_ID,

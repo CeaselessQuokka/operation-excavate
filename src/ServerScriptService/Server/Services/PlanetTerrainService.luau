@@ -22,11 +22,6 @@ local World = JecsCommon.World
 --- Planet Terrain Service ---
 local PlanetTerrainService = {}
 
-function PlanetResourceService.PermissionTerraform(player: Player, point: Vector3): boolean
-	PlanetResourceService.PermissionTerraform(player, point)
-	return true
-end
-
 -- TODO: need to support shapes like box, ball, cone (drills), etc
 function PlanetTerrainService.Terraform(point: Vector3, radius: number)
 	radius = math.ceil(radius / 4) * 4
