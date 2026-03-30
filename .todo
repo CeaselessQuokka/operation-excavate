@@ -22,7 +22,7 @@ local function PlaceVoxel(point: Vector3, size: Vector3)
 			materials[x][y] = {}
 			occupancies[x][y] = {}
 			for z = 1, matrixSize.Z do
-				occupancies[x][y][z] = 1
+				occupancies[x][y][z] = 1 / 256
 				materials[x][y][z] = Enum.Material.LeafyGrass
 			end
 		end
@@ -31,15 +31,18 @@ local function PlaceVoxel(point: Vector3, size: Vector3)
 end
 
 --PlaceVoxel(Vector3.zero, Vector3.one * 20)
-local point = workspace.Point.Position
-local radius = 8
-workspace.Terrain:FillBall(point, radius, Enum.Material.CrackedLava)
+--local point = workspace.Point.Position
+--local radius = 8
+--workspace.Terrain:FillBall(point, radius, Enum.Material.CrackedLava)
 
 -- TODO: need to have a realtime viewer of moving the part and the terrain updating to see how, and where exactly it applies
 
-local min, max = point - Vector3.one * radius, point + Vector3.one * radius
-local region = Region3.new(min, max):ExpandToGrid(4)
-workspace.Point2.Position = region.CFrame.Position
+workspace.Terrain:FillBlock(CFrame.identity, Vector3.one * 8, Enum.Material.LeafyGrass)
+PlaceVoxel(Vector3.new(-2, 0, 0), Vector3.one * 8)
+
+--local min, max = point - Vector3.one * radius, point + Vector3.one * radius
+--local region = Region3.new(min, max):ExpandToGrid(4)
+--workspace.Point2.Position = region.CFrame.Position
 
 --local function TweenRegion(center: Vector3, size: Vector3)
 --	local halfSize = size / 2
@@ -48,7 +51,7 @@ workspace.Point2.Position = region.CFrame.Position
 --	local materials: { { { Enum.Material } } } = {}
 --	local occupancies: { { { number } } } = {}
 --	local voxelSize = region.Size / 4
-	
+
 --	local function GenerateVoxelData(fillAmount: number)
 --		table.clear(materials)
 --		table.clear(occupancies)
