@@ -1,3 +1,115 @@
+--workspace.Terrain:FillBall(Vector3.zero, 4, Enum.Material.LeafyGrass)
+
+local min = Vector3.new(-2, -2, -2)
+local max = Vector3.new(2, 2, 2)
+
+local region = Region3.new(min, max):ExpandToGrid(4)
+
+local occupancies: { { { number } } } = {}
+local materials: { { { Enum.Material } } } = {}
+
+local function PlaceVoxel(point: Vector3, size: Vector3)
+	local halfSize = size / 2
+	local min, max = point - halfSize, point + halfSize
+	local region = Region3.new(min, max):ExpandToGrid(4)
+	local materials: { { { Enum.Material } } } = {}
+	local occupancies: { { { number } } } = {}
+	local matrixSize = region.Size / 4
+	for x = 1, matrixSize.X do
+		materials[x] = {}
+		occupancies[x] = {}
+		for y = 1, matrixSize.Y do
+			materials[x][y] = {}
+			occupancies[x][y] = {}
+			for z = 1, matrixSize.Z do
+				occupancies[x][y][z] = 1
+				materials[x][y][z] = Enum.Material.LeafyGrass
+			end
+		end
+	end
+	workspace.Terrain:WriteVoxels(region, 4, materials, occupancies)
+end
+
+--PlaceVoxel(Vector3.zero, Vector3.one * 20)
+local point = workspace.Point.Position
+local radius = 8
+workspace.Terrain:FillBall(point, radius, Enum.Material.CrackedLava)
+
+-- TODO: need to have a realtime viewer of moving the part and the terrain updating to see how, and where exactly it applies
+
+local min, max = point - Vector3.one * radius, point + Vector3.one * radius
+local region = Region3.new(min, max):ExpandToGrid(4)
+workspace.Point2.Position = region.CFrame.Position
+
+--local function TweenRegion(center: Vector3, size: Vector3)
+--	local halfSize = size / 2
+--	local min, max = center - halfSize, center + halfSize
+--	local region = Region3.new(min, max):ExpandToGrid(4)
+--	local materials: { { { Enum.Material } } } = {}
+--	local occupancies: { { { number } } } = {}
+--	local voxelSize = region.Size / 4
+	
+--	local function GenerateVoxelData(fillAmount: number)
+--		table.clear(materials)
+--		table.clear(occupancies)
+--		for x = 1, voxelSize.X do
+--			materials[x] = {}
+--			occupancies[x] = {}
+--			for y = 1, voxelSize.Y do
+--				materials[x][y] = {}
+--				occupancies[x][y] = {}
+--				for z = 1, voxelSize.Z do
+--					if x == 1 and y == 1 and z == 1 then
+--						occupancies[x][y][z] = fillAmount
+--					else
+--						occupancies[x][y][z] = fillAmount
+--					end
+--					materials[x][y][z] = Enum.Material.LeafyGrass
+--				end
+--			end
+--		end
+--	end
+--	for fill = 1, 0,-1/512 do
+--		GenerateVoxelData(fill)
+--		workspace.Terrain:WriteVoxels(region, 4, materials, occupancies)
+--		task.wait()
+--	end
+--end
+--TweenRegion(Vector3.zero, Vector3.one * 4)
+
+-- TODO: need to apply a "dig" point, I need to see how it aligns after expanding to grid for region 3, i can use DebugHelper to give me visuals of the differences
+
+--print(TweenRegion(Vector3.zero, Vector3.one * 4))
+
+--for x = 1, region.Size.X / 4 do
+--	occupancies[x] = {}
+--	materials[x] = {}
+--	for y = 1, region.Size.Y / 4 do
+--		occupancies[x][y] = {}
+--		materials[x][y] = {}
+--		for z = 1, region.Size.Z / 4 do
+--			if x == 1 and y == 1 and z == 1 then
+--				occupancies[x][y][z] = 0.0078125
+--			elseif x == 2 and y == 2 and z == 2 then
+--				occupancies[x][y][z] = 0.0078125
+--			else
+--				occupancies[x][y][z] = 0.0078125
+--			end
+--			materials[x][y][z] = Enum.Material.LeafyGrass
+--		end
+--	end
+--end
+
+--print(occupancies, materials)
+
+--workspace.Terrain:WriteVoxels(region, 4, materials, occupancies)
+
+--workspace.Terrain:FillBlock(CFrame.identity, Vector3.one * 4, Enum.Material.LeafyGrass)
+
+--print(workspace.Terrain:ReadVoxels(region, 4))
+
+--print(region.Size, region:ExpandToGrid(2).Size)
+
 -- in theory, if I can only render terrain on the client, i can render everything else too, stuff like vehicles will only show if you are within that chunk. resources will be owned individually by players but only live as data on server (waiting to be mined, is exposed, was dropped, no longer existent (this would just be nil of course), etc)
 --- chunks will render with terrain first, while that is happening a request to the backend is made to ask for the latest updates on the terrain changes (this is done real-time if they are currently within the chunk; chunked on the server by a simple vector bounds check using the grid position); after those changes are applied (again, requests are happening to the backend as this happens) stuff like vehicles, NPCs, etc will be spawned after (everything is AFTER the terrain data is updated to ensure the most current collision and everything)
 --- stuff has a memory on the client, like resource data (whether dropped, last position when dropped and chunk unloaded) will be rendered as the requests are being done, but once the server gives updated info (like if the resource was removed or something) this will then happen
