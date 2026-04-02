@@ -1,6 +1,5 @@
 {
 	"[luau]": {
-		"editor.tabSize": 4,
 		"editor.defaultFormatter": "JohnnyMorganz.stylua"
 	},
 	"editor.useTabStops": true,

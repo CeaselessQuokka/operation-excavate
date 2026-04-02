@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 
-local ResourceOffets = require(ReplicatedStorage.Shared.Common.ResourceOffsets)
+local ResourceOffsets = require(ReplicatedStorage.Shared.Common.ResourceOffsets)
 
 local RNG = Random.new()
 
@@ -10,7 +10,7 @@ local builder: { string } = {
 }
 
 local s = os.clock()
-for index, offset in ResourceOffets do
+for index, offset in ResourceOffsets do
 	builder[index + 1] = `\tCFrame.new({CFrame.lookAlong(offset, RNG:NextUnitVector())}),`
 end
 print(os.clock() - s)
