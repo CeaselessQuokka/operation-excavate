@@ -102,9 +102,9 @@ function Cleaner._CleanTrackable<T>(self: Cleaner, trackable: T & Trackable, fun
 
 	local function GetSecondaryInstanceCleanupFunction(trackable: Instance): Callable?
 		if trackable:IsA("AnimationTrack") then
-			return (trackable :: any).Stop
+			return trackable.Stop :: Callable
 		elseif trackable:IsA("Tween") then
-			return (trackable :: any).Cancel
+			return trackable.Cancel :: Callable
 		else
 			return nil
 		end

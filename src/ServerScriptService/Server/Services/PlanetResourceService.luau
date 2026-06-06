@@ -137,7 +137,6 @@ function PlanetResourceService.Terraform(point: Vector3, radius: number)
 			local offsetId = bit32.band(resourceId, MAX_RESOURCE_OFFSETS)
 			local isExposed = IsResourceExposed(typeId, offsetId, chunkCenter)
 			local model = exposedResourceModels[resourceId]
-			print(model, isExposed)
 			if isExposed and not chunkData.ExposedResources[resourceId] then
 				-- Item is embedded and exposed to the air.
 				chunkData.ExposedResources[resourceId] = true
@@ -150,7 +149,6 @@ function PlanetResourceService.Terraform(point: Vector3, radius: number)
 				-- but now it was dug out since no terrain is surrounded it.
 				chunkData.Resources[resourceId] = nil
 				chunkData.ExposedResources[resourceId] = nil
-				print("whats goin on", model)
 				if model then
 					local gaveGravity = false
 					for _, part in model:QueryDescendants("BasePart") do

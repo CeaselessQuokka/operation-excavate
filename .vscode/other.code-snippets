@@ -31,10 +31,6 @@
 		],
 		"description": "Generates a template class given the file name.",
 		"body": [
-			"--[[",
-			"\tSynopsis",
-			"--]]",
-			"",
 			"--!strict",
 			"--- Services ---",
 			"",

@@ -1,0 +1,115 @@
+--!strict
+--- Services ---
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local RunService = game:GetService("RunService")
+local Selection = game:GetService("Selection")
+local ServerStorage = game:GetService("ServerStorage")
+local Workspace = game:GetService("Workspace")
+
+--- Imports ---
+local ActionGui = (require :: any)(game:QueryDescendants("ModuleScript#__Snippet_ActionGui")[1]:Clone())
+--local ActionGui = require(script.Parent.__Snippet_ActionGui) -- Uncomment for typechecking.
+
+--- Variables ---
+local rigActions = ActionGui.new("Rig Actions")
+
+--- Functions ---
+local function GetSelectedCFrame(selection: Instance): CFrame?
+	if selection then
+		local cframe: CFrame?
+		if pcall(function()
+			cframe = (selection :: Attachment).WorldCFrame
+		end) then
+			return cframe
+		end
+		if pcall(function()
+			cframe = (selection :: BasePart).CFrame
+		end) then
+			return cframe
+		end
+		if pcall(function()
+			cframe = (selection :: Model):GetPivot()
+		end) then
+			return cframe
+		end
+	end
+	return nil
+end
+
+--- Rig Actions GUI ---
+do -- Show POV action.
+	rigActions:CreateAction(
+		"Show POV",
+		"Puts your camera at the CFrame of the current PVInstance/Attachment you are looking at.",
+		function()
+			local camera = Workspace.CurrentCamera or Workspace:GetPropertyChangedSignal("CurrentCamera"):Wait()
+			camera.CFrame = GetSelectedCFrame(Selection:Get()[1]) or camera.CFrame
+		end
+	)
+end
+
+do -- Simulate Physics action.
+	local function GetSelectedParts(): { BasePart }
+		local parts = {}
+		for _, instance in Selection:Get() do
+			if instance:IsA("BasePart") then
+				table.insert(parts, instance)
+			end
+			for _, part in instance:QueryDescendants("BasePart") :: { BasePart } do
+				table.insert(parts, part)
+			end
+		end
+		return parts
+	end
+
+	local selectedParts: { BasePart } = {}
+	rigActions:Clean(function()
+		table.clear(selectedParts)
+	end)
+	rigActions:CreateAction(
+		"Simulate Physics",
+		"Simulates physics on the selected parts until action GUI is cleaned up.",
+		function()
+			selectedParts = GetSelectedParts()
+			rigActions:Clean(RunService.PreRender:Connect(function(dt)
+				Workspace:StepPhysics(dt, selectedParts :: { Instance })
+			end))
+		end
+	)
+end
+
+do -- Smart PivotTo action.
+	rigActions:CreateAction(
+		"Smart PivotTo",
+		"Sets the first selected part's parent Model's CFrame to the second selection.",
+		function()
+			local movePart, toPart = Selection:Get()[1], Selection:Get()[2]
+			if not movePart:IsA("BasePart") then
+				warn("First selection must be a BasePart.")
+				return
+			end
+			local to = GetSelectedCFrame(toPart)
+			if not to then
+				warn("Second selection must be a BasePart, Model, or Attachment.")
+				return
+			end
+
+			local model = movePart:FindFirstAncestorWhichIsA("Model")
+			if model then
+				local recordingId = ChangeHistoryService:TryBeginRecording("SmartPivotTo")
+				if not recordingId then
+					warn(
+						"Failed to start recording action; cannot perform Smart PivotTo. This may require a Studio restart to fix."
+					)
+					return
+				end
+
+				local oldPrimaryPart = model.PrimaryPart
+				model.PrimaryPart = movePart
+				model:PivotTo(to)
+				model.PrimaryPart = oldPrimaryPart
+				ChangeHistoryService:FinishRecording(recordingId, Enum.FinishRecordingOperation.Commit)
+			end
+		end
+	)
+end

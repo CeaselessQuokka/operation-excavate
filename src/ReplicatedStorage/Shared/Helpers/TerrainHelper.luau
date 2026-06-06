@@ -152,56 +152,56 @@ function TerrainHelper.ApplyTransformation(
 	end
 end
 
-do -- TerrainHelper debugger (TODO: remove).
-	local chunkMaterials, chunkOccupancies, chunkRegion =
-		TerrainHelper.GenerateBlockMatrix(Vector3.zero, 64, Enum.Material.LeafyGrass)
-	local ballRadius = 4
-	local _, ballOccupancies, ballRegion = TerrainHelper.GenerateBallMatrix(Vector3.zero, ballRadius, Enum.Material.Air)
-	local pointPart: BasePart = (workspace :: any).Point
-	local point = pointPart.Position
-	local chunkMin = chunkRegion.CFrame.Position - (chunkRegion.Size / 2)
-	local moveConnection: RBXScriptConnection
-	moveConnection = game:GetService("RunService").Heartbeat:Connect(function()
-		if workspace:GetAttribute("Stop") then
-			moveConnection:Disconnect()
-			workspace:SetAttribute("Stop", nil)
-			return
-		end
+-- do -- TerrainHelper debugger (TODO: remove).
+-- 	local chunkMaterials, chunkOccupancies, chunkRegion =
+-- 		TerrainHelper.GenerateBlockMatrix(Vector3.zero, 64, Enum.Material.LeafyGrass)
+-- 	local ballRadius = 4
+-- 	local _, ballOccupancies, ballRegion = TerrainHelper.GenerateBallMatrix(Vector3.zero, ballRadius, Enum.Material.Air)
+-- 	local pointPart: BasePart = (workspace :: any).Point
+-- 	local point = pointPart.Position
+-- 	local chunkMin = chunkRegion.CFrame.Position - (chunkRegion.Size / 2)
+-- 	local moveConnection: RBXScriptConnection
+-- 	moveConnection = game:GetService("RunService").Heartbeat:Connect(function()
+-- 		if workspace:GetAttribute("Stop") then
+-- 			moveConnection:Disconnect()
+-- 			workspace:SetAttribute("Stop", nil)
+-- 			return
+-- 		end
 
-		if pointPart.Position ~= point then
-			-- Inline SubtractOccupancies.
-			--local s = os.clock()
-			--point = pointPart.Position
-			--local alignedPoint =
-			--	Vector3.new(math.round(point.X / 4) * 4, math.round(point.Y / 4) * 4, math.round(point.Z / 4) * 4)
-			--local pointMin = alignedPoint - (ballRegion.Size / 2)
-			--local offset = (pointMin - chunkMin) / 4
-			--local modifiedOccupancies = TerrainHelper.SubtractOccupancies(
-			--	chunkOccupancies,
-			--	ballOccupancies,
-			--	chunkRegion.Size / 4,
-			--	ballRegion.Size / 4,
-			--	offset
-			--)
-			--workspace.Terrain:WriteVoxels(chunkRegion, 4, chunkMaterials, modifiedOccupancies)
-			--print((1 / 60) / (os.clock() - s))
+-- 		if pointPart.Position ~= point then
+-- 			-- Inline SubtractOccupancies.
+-- 			--local s = os.clock()
+-- 			--point = pointPart.Position
+-- 			--local alignedPoint =
+-- 			--	Vector3.new(math.round(point.X / 4) * 4, math.round(point.Y / 4) * 4, math.round(point.Z / 4) * 4)
+-- 			--local pointMin = alignedPoint - (ballRegion.Size / 2)
+-- 			--local offset = (pointMin - chunkMin) / 4
+-- 			--local modifiedOccupancies = TerrainHelper.SubtractOccupancies(
+-- 			--	chunkOccupancies,
+-- 			--	ballOccupancies,
+-- 			--	chunkRegion.Size / 4,
+-- 			--	ballRegion.Size / 4,
+-- 			--	offset
+-- 			--)
+-- 			--workspace.Terrain:WriteVoxels(chunkRegion, 4, chunkMaterials, modifiedOccupancies)
+-- 			--print((1 / 60) / (os.clock() - s))
 
-			-- ApplyTransformation (equivalent to inlined SubtractOccupancies).
-			local s = os.clock()
-			point = pointPart.Position
-			TerrainHelper.ApplyTransformation(
-				chunkOccupancies,
-				chunkMaterials,
-				chunkRegion,
-				ballOccupancies,
-				point,
-				ballRegion.Size,
-				true
-			)
-			print((1 / 60) / (os.clock() - s))
-		end
-	end)
-	workspace.Terrain:WriteVoxels(chunkRegion, 4, chunkMaterials, chunkOccupancies)
-end
+-- 			-- ApplyTransformation (equivalent to inlined SubtractOccupancies).
+-- 			local s = os.clock()
+-- 			point = pointPart.Position
+-- 			TerrainHelper.ApplyTransformation(
+-- 				chunkOccupancies,
+-- 				chunkMaterials,
+-- 				chunkRegion,
+-- 				ballOccupancies,
+-- 				point,
+-- 				ballRegion.Size,
+-- 				true
+-- 			)
+-- 			print((1 / 60) / (os.clock() - s))
+-- 		end
+-- 	end)
+-- 	workspace.Terrain:WriteVoxels(chunkRegion, 4, chunkMaterials, chunkOccupancies)
+-- end
 
 return table.freeze(TerrainHelper)

@@ -1,4 +1,4 @@
- --!strict
+--!strict
 --- Services ---
 local Workspace = game:GetService("Workspace")
 
@@ -6,27 +6,57 @@ local Workspace = game:GetService("Workspace")
 type ViewerPart = BasePart
 
 --- Variables ---
-local Cleaner = setmetatable({ _items = {} }, {
-	__call = function(self, item: any)
-		if item ~= nil then
-			table.insert(self._items, item)
-		else
-			for _, item in self._items :: any do
-				if not pcall(function()
-					item:Destroy()
-				end) then
-					if not pcall(function()
-						item:Disconnect()
-					end) then
-						warn("Failed to clean up item:", item)
+export type Cleaner = setmetatable<{ _items: { any } }, {
+	__call: (self: Cleaner, item: any) -> any,
+}>
+
+local function Cleaner(): Cleaner
+	return setmetatable({ _items = {} }, {
+		__call = function(self, item: any)
+			if item ~= nil then
+				table.insert(self._items, item)
+			else
+				for _, item in self._items :: any do
+					if not pcall(game.Destroy, item) then
+						if not pcall(function()
+							item:Disconnect()
+						end) then
+							if not pcall(function()
+								task.spawn(item)
+							end) then
+								warn(`Failed to clean up item: {item} ({typeof(item)})`)
+							end
+						end
 					end
 				end
+				table.clear(self._items)
 			end
-			table.clear(self._items)
-		end
-		return item
-	end,
-})
+			return item
+		end,
+	})
+end
+
+local cleaner = Cleaner()
+local customCleanup = workspace.ChildRemoved:Connect(function(child)
+	print(
+		"Child removed from workspace (you can always track your own data too if you need to for any edge cases):",
+		child
+	)
+end)
+task.delay(3, customCleanup.Disconnect, customCleanup)
+cleaner(workspace.ChildAdded:Connect(function(child)
+	print("New child added to workspace (run the cleaner to easily stop disconnect events):", child)
+end))
+cleaner(function()
+	print("Function executed; functions can be used to cleanup multiple things at once with any custom logic")
+end)
+local p = cleaner(Instance.new("Part"))
+p.Parent = workspace
+task.wait(2)
+cleaner()
+local p2 = cleaner(Instance.new("Part"))
+p2.Parent = workspace
+task.defer(cleaner :: any --[[Typechecker doesn't seem to realize the table can be callable; so cast to any]])
 
 local region: Region3
 
@@ -253,7 +283,7 @@ local function CreateVoxelDisplay(
 end
 
 function ShowVoxelsInViewerPart(viewerPart: ViewerPart)
-	local folder = Cleaner(Instance.new("Folder")) :: Folder
+	local folder = cleaner(Instance.new("Folder")) :: Folder
 	folder.Name = "VoxelDisplays"
 	folder.Parent = Workspace
 
@@ -312,18 +342,18 @@ function ShowVoxelsInViewerPart(viewerPart: ViewerPart)
 		end)
 	end
 
-	Cleaner(viewerPart:GetPropertyChangedSignal("CFrame"):Connect(QueueRefresh))
-	Cleaner(viewerPart:GetPropertyChangedSignal("Size"):Connect(QueueRefresh))
+	cleaner(viewerPart:GetPropertyChangedSignal("CFrame"):Connect(QueueRefresh))
+	cleaner(viewerPart:GetPropertyChangedSignal("Size"):Connect(QueueRefresh))
 	task.defer(RefreshVoxelDisplay)
 end
 
 --- Chunk Viewer Tool ---
 local viewerPart = EnsureViewerPart()
-Cleaner(EnsureViewerPartSize(viewerPart))
-Cleaner(EnsureViewerPartPosition(viewerPart))
+cleaner(EnsureViewerPartSize(viewerPart))
+cleaner(EnsureViewerPartPosition(viewerPart))
 ShowVoxelsInViewerPart(viewerPart)
-Cleaner(viewerPart.AncestryChanged:Connect(function(_, parent)
+cleaner(viewerPart.AncestryChanged:Connect(function(_, parent)
 	if not parent then
-		Cleaner()
+		cleaner()
 	end
 end))

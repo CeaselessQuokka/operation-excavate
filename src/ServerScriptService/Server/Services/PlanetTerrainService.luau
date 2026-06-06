@@ -105,33 +105,33 @@ do -- Service initialization.
 	Players.PlayerRemoving:Connect(function(player)
 		lastChunkPositions[player] = nil
 	end)
-	task.spawn(function()
-		while true do
-			task.wait(1 / 8)
-			local threads = 0
-			for player: Player, character: CharacterHelper.UsableR15Character in characters do
-				local lastChunkIndex = lastChunkPositions[player]
-				local currentChunkIndex = planetGrid:GetNearestChunkIndexAtPosition(character:GetPivot().Position)
-				if lastChunkIndex and currentChunkIndex == lastChunkIndex then
-					continue
-				end
+	-- task.spawn(function()
+	-- 	while true do
+	-- 		task.wait(1 / 8)
+	-- 		local threads = 0
+	-- 		for player: Player, character: CharacterHelper.UsableR15Character in characters do
+	-- 			local lastChunkIndex = lastChunkPositions[player]
+	-- 			local currentChunkIndex = planetGrid:GetNearestChunkIndexAtPosition(character:GetPivot().Position)
+	-- 			if lastChunkIndex and currentChunkIndex == lastChunkIndex then
+	-- 				continue
+	-- 			end
 
-				-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
-				lastChunkPositions[player] = currentChunkIndex
-				task.spawn(function()
-					threads += 1
-					local chunkGridPosition = planet:ChunkIndexToGridPosition(currentChunkIndex)
-					GenerateChunksAroundGridPosition(chunkGridPosition)
-					threads -= 1
-				end)
-			end
-			task.wait(1 / 8)
-			-- while threads > 0 do
-			-- 	task.wait(1 / 8)
-			-- end
-			-- print("DONE")
-		end
-	end)
+	-- 			-- print("\t", (currentPosition - (lastPosition or Vector3.zero)).Magnitude)
+	-- 			lastChunkPositions[player] = currentChunkIndex
+	-- 			task.spawn(function()
+	-- 				threads += 1
+	-- 				local chunkGridPosition = planet:ChunkIndexToGridPosition(currentChunkIndex)
+	-- 				GenerateChunksAroundGridPosition(chunkGridPosition)
+	-- 				threads -= 1
+	-- 			end)
+	-- 		end
+	-- 		task.wait(1 / 8)
+	-- 		-- while threads > 0 do
+	-- 		-- 	task.wait(1 / 8)
+	-- 		-- end
+	-- 		-- print("DONE")
+	-- 	end
+	-- end)
 
 	local remote = Remote.Event("OnRequestTerraform") :: Remote.ServerApi<(Vector3, number)>
 	remote:Connect(function(player, point, radius)
